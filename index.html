@@ -87,10 +87,19 @@
   .stage video{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block;}
   .stage .off{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
               gap:12px; color:#B9C6DA; text-align:center; padding:20px; font-size:.9rem;}
-  .guide{position:absolute; left:50%; top:50%; width:46%; height:26%; transform:translate(-50%,-50%);
+  .guide{position:absolute; left:50%; top:43%; width:46%; height:25%; transform:translate(-50%,-50%);
          border:3px dashed rgba(255,197,61,.85); border-radius:50%; pointer-events:none;}
-  .guide::after{content:"くちを ここに"; position:absolute; left:50%; bottom:-26px; transform:translateX(-50%);
-         font-size:.72rem; color:var(--sun); white-space:nowrap; font-weight:700;}
+  .guidelab{position:absolute; left:0; right:0; bottom:9px; text-align:center; color:var(--sun);
+         font-size:.76rem; font-weight:700; letter-spacing:.06em; pointer-events:none;
+         text-shadow:0 1px 5px rgba(0,0,0,.8);}
+  /* こえのなみ：映像に重ねて表示 */
+  .wavewrap{position:absolute; left:12px; right:12px; bottom:32px; padding:5px 10px 3px;
+         background:rgba(9,15,28,.52); border-radius:14px; pointer-events:none;
+         backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);}
+  .wavewrap .lab{display:flex; justify-content:space-between; align-items:baseline;
+         color:#C3D2E8; font-size:.66rem; font-weight:700; margin-bottom:2px;}
+  .wavewrap canvas{display:block; width:100%; height:44px;}
+  .wavewrap .ok{color:var(--mint);} .wavewrap .ng{color:#FFB0B0;}
   .stagetop{position:absolute; top:10px; left:10px; right:10px; display:flex; gap:8px; align-items:center;}
   .pill{background:rgba(9,15,28,.62); color:#fff; border-radius:999px; padding:6px 12px; font-size:.78rem; font-weight:700;
         backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);}
@@ -99,14 +108,9 @@
   @keyframes pulse{50%{opacity:.55}}
   .count{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
          font-size:110px; font-weight:700; color:#fff; text-shadow:0 6px 24px rgba(0,0,0,.5);}
-  .zoomrow{position:absolute; right:10px; bottom:10px; display:flex; flex-direction:column; gap:8px;}
+  .zoomrow{position:absolute; right:10px; top:54px; display:flex; flex-direction:column; gap:8px;}
   .zbtn{width:42px;height:42px;border-radius:50%; background:rgba(9,15,28,.62); color:#fff; font-size:22px; font-weight:700;
         display:flex; align-items:center; justify-content:center;}
-
-  /* ---------- voice ribbon (signature) ---------- */
-  .ribbon{margin-top:10px; background:var(--ink); border-radius:16px; padding:10px 12px;}
-  .ribbon canvas{display:block; width:100%; height:72px;}
-  .ribbon .lab{display:flex; justify-content:space-between; color:#8FA3C2; font-size:.72rem; font-weight:700; margin-bottom:4px;}
 
   /* ---------- big action ---------- */
   .go{width:100%; border-radius:24px; padding:20px; font-size:1.35rem; font-weight:700; color:var(--ink);
@@ -195,6 +199,56 @@
     opacity:0; pointer-events:none; transition:.3s; z-index:70; max-width:90%;}
   .toast.on{opacity:1; transform:translateX(-50%) translateY(0);}
 
+  /* ========== Chromebook / PC：2カラム ========== */
+  @media (min-width: 900px){
+    #app{max-width:1080px; padding:16px 24px 110px;}
+    .topbar{padding:4px 2px 16px;}
+    .brand{font-size:1.2rem;}
+
+    /* 練習：左＝カメラ／右＝お手本と結果 */
+    #pgPractice.on{
+      display:grid;
+      grid-template-columns: minmax(0,1.08fr) minmax(0,.92fr);
+      grid-template-rows: auto 1fr;
+      gap:0 22px;
+      align-items:start;
+    }
+    #pMain{grid-column:1; grid-row:1 / span 2; position:sticky; top:16px;}
+    #pTop {grid-column:2; grid-row:1;}
+    #pSide{grid-column:2; grid-row:2;}
+    #pgPractice .chips{flex-wrap:wrap; overflow:visible;}
+    #resultCard{margin-top:0 !important;}
+    .stage{aspect-ratio:4/3;}
+    .kana{min-width:150px; height:150px; font-size:88px;}
+    .wavewrap{bottom:38px; left:16px; right:16px;}
+    .wavewrap canvas{height:56px;}
+    .wavewrap .lab{font-size:.72rem;}
+
+    /* きろく・せってい：カードを2列に */
+    #pgRecords.on, #pgSettings.on{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap:18px;
+      align-items:start;
+    }
+    #pgRecords.on > *, #pgSettings.on > *{margin-bottom:0;}
+    #pgRecords .kpis{grid-column:1 / -1; margin-bottom:0;}
+    #pgRecords .kpi b{font-size:1.9rem;}
+
+    /* タブは中央のフローティングに */
+    .tabbar{
+      left:50%; right:auto; transform:translateX(-50%);
+      bottom:18px; width:auto; border-radius:999px;
+      border:1px solid var(--line); padding:6px;
+      box-shadow:0 10px 30px rgba(23,35,58,.14);
+    }
+    .tabbar button{padding:9px 26px; font-size:.8rem;}
+    .tabbar .ic{font-size:1.2rem;}
+  }
+  @media (min-width: 1200px){
+    #app{max-width:1200px;}
+  }
+
   @media (prefers-reduced-motion: reduce){
     *{animation:none !important; transition:none !important;}
   }
@@ -209,6 +263,7 @@
 
   <!-- ============ PRACTICE ============ -->
   <section class="page on" id="pgPractice">
+    <div class="pcol" id="pTop">
     <div class="chips" id="levelChips"></div>
 
     <div class="card">
@@ -224,7 +279,9 @@
         </div>
       </div>
     </div>
+    </div><!-- /pTop -->
 
+    <div class="pcol" id="pMain">
     <div class="stage" id="stage">
       <video id="vid" playsinline autoplay muted></video>
       <div class="off" id="camOff">
@@ -232,25 +289,32 @@
         <div>したの ボタンを おして<br>カメラを つけてね</div>
       </div>
       <div class="guide" id="guideRing" style="display:none"></div>
+      <div class="wavewrap" id="waveWrap">
+        <div class="lab">
+          <span>こえの なみ</span>
+          <span><span id="micState">マイク：まだ</span>　<span class="num" id="lvlTxt">0</span></span>
+        </div>
+        <canvas id="wave"></canvas>
+      </div>
+      <div class="guidelab" id="guideLab" style="display:none">↑ くちを ここに</div>
       <div class="stagetop">
         <span class="pill" id="stateP">まって います</span>
         <span class="pill btn" id="btnFlip" style="margin-left:auto; display:none">⇄ カメラ</span>
       </div>
-      <div class="count" id="countTxt" style="display:none"></div>
       <div class="zoomrow" id="zoomRow" style="display:none">
         <button class="zbtn" id="zIn">＋</button>
         <button class="zbtn" id="zOut">−</button>
       </div>
+      <div class="count" id="countTxt" style="display:none"></div>
     </div>
 
-    <div class="ribbon">
-      <div class="lab"><span>こえの なみ</span><span id="lvlTxt">0</span></div>
-      <canvas id="wave"></canvas>
-    </div>
+    <button class="mini" id="btnMic" style="display:none; margin-top:10px; width:100%">マイクを つなぎなおす</button>
 
     <div style="height:12px"></div>
     <button class="go" id="btnGo">カメラを つける</button>
+    </div><!-- /pMain -->
 
+    <div class="pcol" id="pSide">
     <!-- result -->
     <div class="card" id="resultCard" style="display:none; margin-top:14px;">
       <h2>けっか</h2>
@@ -269,6 +333,7 @@
       <div style="height:8px"></div>
       <button class="go ghost" id="btnRetry">もういちど やる</button>
     </div>
+    </div><!-- /pSide -->
   </section>
 
   <!-- ============ RECORDS ============ -->
@@ -335,6 +400,13 @@
     </div>
 
     <div class="card">
+      <h2>マイクの かくにん</h2>
+      <p class="sub">「こえの なみ」が うごかない ときは ここを 見てください。</p>
+      <div id="diag" class="sub" style="line-height:1.9"></div>
+      <button class="mini" id="btnDiag">いまの じょうたいを しらべる</button>
+    </div>
+
+    <div class="card">
       <h2>データ</h2>
       <p class="sub">記録は この端末の中だけに保存されます（サーバー送信なし）。端末を替えるときは書き出してください。</p>
       <div class="rowbtns">
@@ -382,7 +454,7 @@ const AXES = [
   {k:"kenko",  short:"つづける力",     ku:"健康の保持"},
   {k:"shinri", short:"いよく・おちつき", ku:"心理的な安定"},
   {k:"ningen", short:"つたえあい",     ku:"人間関係の形成"},
-  {k:"kankyo", short:"じこかくにん",   ku:"環境の把握"},
+  {k:"kankyo", short:"はんのうの はやさ", ku:"環境の把握"},
   {k:"shintai",short:"はっせいの力",   ku:"身体の動き"},
   {k:"comm",   short:"めいりょうさ",   ku:"コミュニケーション"}
 ];
@@ -526,8 +598,13 @@ function mouthSvg(v){
    ======================================================================== */
 let curLevel = 0;
 let curIndex = 0;
-let stream = null;
-let audioCtx=null, analyser=null, srcNode=null, dataArr=null;
+let stream = null;        // 映像ストリーム
+let micStream = null;     // 音声ストリーム（別取得）
+let audioCtx=null, analyser=null, srcNode=null, dataArr=null, silentGain=null;
+let meterOn=false;        // ライブメーター稼働中
+let holdWave=false;       // 録音後、波形を消さずに残す
+let waveThr = 0.010;      // 発声とみなす音量のしきい値
+const LOUD_FULL = 0.06;   // この音量で「声の大きさ」満点
 let running = false;      // 録音中
 let pending = null;       // 採点まちの結果
 let selMouth = 0;
@@ -597,26 +674,27 @@ function applyVideoStyle(){
   v.style.transform = "scale("+(m*zoom)+","+zoom+")";
   v.style.transformOrigin = "center center";
   $("#guideRing").style.display = db.settings.guide ? "block" : "none";
+  $("#guideLab").style.display  = db.settings.guide ? "block" : "none";
 }
+function setMic(txt, ok){
+  const el = $("#micState");
+  el.textContent = txt;
+  el.className = ok===true ? "ok" : (ok===false ? "ng" : "");
+}
+
 async function startCam(){
-  stopCam();
-  const constraints = {
-    video:{ facingMode: db.settings.facing, width:{ideal:1280}, height:{ideal:960} },
-    audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false }
-  };
+  stopVideo();
   try{
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode: db.settings.facing, width:{ideal:1280}, height:{ideal:960} },
+      audio:false
+    });
   }catch(e){
-    // マイク不可のときは映像だけで続行
-    try{
-      stream = await navigator.mediaDevices.getUserMedia({video:constraints.video, audio:false});
-      toast("マイクが つかえません。てんすうは じこひょうかだけに なります");
-    }catch(e2){
-      modal('<div style="font-size:38px">📷</div><h3>カメラを つかえません</h3>'
-        +'<p>ブラウザの きょかを かくにんしてください。<br>（Chromebook は かんりしゃの せっていで きんしされている ことが あります）</p>'
-        +'<button class="go" onclick="this.closest(\'.mask\').classList.remove(\'on\')">とじる</button>');
-      return false;
-    }
+    modal('<div style="font-size:38px">📷</div><h3>カメラを つかえません</h3>'
+      +'<p>ブラウザの きょかを かくにんしてください。<br>（Chromebook は かんりしゃの せっていで きんしされている ことが あります）</p>'
+      +'<button class="go" id="cmOk">とじる</button>');
+    const b=$("#cmOk"); if(b) b.addEventListener("click", closeModal);
+    return false;
   }
   const v = $("#vid");
   v.srcObject = stream;
@@ -627,29 +705,74 @@ async function startCam(){
   $("#btnFlip").style.display="block";
   $("#zoomRow").style.display="flex";
   applyVideoStyle();
-  setupAudio();
+  await startMic();
   return true;
 }
-function stopCam(){
+
+/* マイクは映像と別に取得する。
+   ・同時取得だと端末によって音声トラックが無音になることがある
+   ・映像だけ許可 / 音声だけ不許可 の状態を切り分けられる */
+async function startMic(){
+  stopMic();
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    setMic("マイク：つかえません", false); return false;
+  }
+  try{
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false }
+    });
+  }catch(e){
+    try{ micStream = await navigator.mediaDevices.getUserMedia({audio:true}); }
+    catch(e2){
+      setMic("マイク：きょか なし", false);
+      $("#btnMic").style.display="block";
+      toast("マイクが つかえません。てんすうは じこひょうかだけに なります");
+      return false;
+    }
+  }
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!audioCtx || audioCtx.state==="closed") audioCtx = new AC();
+    if(audioCtx.state === "suspended"){ try{ await audioCtx.resume(); }catch(e){} }
+    if(srcNode){ try{ srcNode.disconnect(); }catch(e){} }
+    srcNode  = audioCtx.createMediaStreamSource(micStream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.2;
+    dataArr  = new Uint8Array(analyser.fftSize);
+    srcNode.connect(analyser);
+    // Safari 対策：出力側につながっていないと解析が動かない端末があるため、
+    // 音量0のゲインを経由して destination に接続しておく（音は出ない）
+    if(!silentGain){
+      silentGain = audioCtx.createGain();
+      silentGain.gain.value = 0;
+      silentGain.connect(audioCtx.destination);
+    }
+    try{ analyser.connect(silentGain); }catch(e){}
+    setMic("マイク：OK", true);
+    $("#btnMic").style.display="none";
+    startMeter();
+    return true;
+  }catch(e){
+    analyser = null;
+    setMic("マイク：しっぱい", false);
+    $("#btnMic").style.display="block";
+    return false;
+  }
+}
+
+function stopVideo(){
   if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
   $("#vid").srcObject = null;
 }
-function setupAudio(){
-  const tracks = stream ? stream.getAudioTracks() : [];
-  if(!tracks.length){ analyser=null; return; }
-  try{
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if(!audioCtx) audioCtx = new AC();
-    if(audioCtx.state==="suspended") audioCtx.resume();
-    if(srcNode){ try{srcNode.disconnect();}catch(e){} }
-    srcNode = audioCtx.createMediaStreamSource(stream);
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 1024;
-    analyser.smoothingTimeConstant = 0.4;
-    srcNode.connect(analyser);
-    dataArr = new Uint8Array(analyser.fftSize);
-  }catch(e){ analyser=null; }
+function stopMic(){
+  meterOn = false;
+  if(srcNode){ try{ srcNode.disconnect(); }catch(e){} srcNode=null; }
+  analyser = null;
+  if(micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream=null; }
 }
+function stopCam(){ stopVideo(); stopMic(); }
+
 function rms(){
   if(!analyser) return 0;
   analyser.getByteTimeDomainData(dataArr);
@@ -657,6 +780,29 @@ function rms(){
   for(let i=0;i<dataArr.length;i++){ const x=(dataArr[i]-128)/128; s+=x*x; }
   return Math.sqrt(s/dataArr.length);
 }
+
+/* 待機中も常に波を動かす（マイクが生きているか一目で分かるように） */
+function startMeter(){
+  if(meterOn) return;
+  meterOn = true;
+  (function loop(){
+    if(!meterOn) return;
+    requestAnimationFrame(loop);
+    if(running || holdWave) return;           // 録音中・結果表示中は上書きしない
+    if(document.hidden) return;
+    if(!$("#pgPractice").classList.contains("on")) return;
+    const v = rms();
+    waveTrace.push(v);
+    if(waveTrace.length>140) waveTrace.shift();
+    $("#lvlTxt").textContent = Math.round(clamp(v/LOUD_FULL,0,1)*100);
+    drawWave(true);
+  })();
+}
+$("#btnMic").addEventListener("click", async ()=>{
+  setMic("マイク：せつぞくちゅう…");
+  const ok = await startMic();
+  toast(ok ? "マイクに つながりました" : "マイクに つながりません（せっていを かくにん）");
+});
 $("#btnFlip").addEventListener("click", async ()=>{
   db.settings.facing = db.settings.facing==="user" ? "environment" : "user";
   save(); await startCam();
@@ -679,30 +825,41 @@ function fitCanvas(cv, h){
   return {c:c, w:w, h:h};
 }
 function drawWave(live){
-  const g = fitCanvas(waveCv, 72), c=g.c;
+  const hh0 = (window.innerWidth>=900) ? 56 : 44;
+  const g = fitCanvas(waveCv, hh0), c=g.c;
   c.clearRect(0,0,g.w,g.h);
   // baseline
-  c.strokeStyle="#31415F"; c.lineWidth=1;
+  c.strokeStyle="rgba(255,255,255,.22)"; c.lineWidth=1;
   c.beginPath(); c.moveTo(0,g.h-2); c.lineTo(g.w,g.h-2); c.stroke();
   const n = waveTrace.length;
   if(!n){
-    c.fillStyle="#4A5C7D"; c.font="600 12px sans-serif"; c.textAlign="center";
-    c.fillText("こえを 出すと ここに なみが でます", g.w/2, g.h/2+4);
+    c.fillStyle="rgba(255,255,255,.5)"; c.font="700 11px sans-serif"; c.textAlign="center";
+    c.fillText("こえを 出して みよう", g.w/2, g.h/2+4);
     return;
   }
-  const maxN = Math.max(n, 30);
-  const bw = Math.max(2, g.w/maxN - 1);
+  // 端末やマイク感度の差が大きいため、表示は自動スケールにする
+  let peak = 0;
+  for(let i=0;i<n;i++) if(waveTrace[i]>peak) peak = waveTrace[i];
+  const scale = Math.max(peak*1.15, LOUD_FULL*0.5);
+  // しきい値のライン
+  const ty = g.h-2 - clamp(waveThr/scale,0,1)*(g.h-6);
+  c.strokeStyle="rgba(255,255,255,.3)"; c.setLineDash([3,3]); c.lineWidth=1;
+  c.beginPath(); c.moveTo(0,ty); c.lineTo(g.w,ty); c.stroke(); c.setLineDash([]);
+
+  const maxN = Math.max(n, 40);
+  const step = g.w/maxN;
+  const bw = Math.max(2, step-1);
   for(let i=0;i<n;i++){
-    const v = clamp(waveTrace[i]/0.20,0,1);
+    const raw = waveTrace[i];
+    const v = clamp(raw/scale,0,1);
     const hh = Math.max(2, v*(g.h-6));
-    const x = i*(g.w/maxN);
-    c.fillStyle = v>0.12 ? "#2FBF9B" : "#3A4A6A";
+    const x = i*step;
+    c.fillStyle = raw>waveThr ? "#3BE0B4" : "rgba(255,255,255,.28)";
     c.fillRect(x, g.h-2-hh, bw, hh);
   }
-  if(live){
+  if(live && n>1){
     c.fillStyle="#FFC53D";
-    const x = (n-1)*(g.w/maxN);
-    c.fillRect(x, 0, bw, g.h);
+    c.fillRect((n-1)*step, 0, bw, g.h);
   }
 }
 
@@ -716,6 +873,7 @@ function setPhase(p, label){
   $("#stateP").className = "pill" + (p==="rec" ? " rec" : "");
 }
 function hideResult(){
+  holdWave = false;
   $("#resultCard").style.display="none";
   pending=null; selMouth=0; listened=false;
   $$("#rateRow button").forEach(b=>b.classList.remove("on"));
@@ -740,6 +898,7 @@ let abortFlag=false;
 function abortAttempt(){
   abortFlag = true;
   running=false;
+  holdWave=false;
   setPhase("ready","じゅんび OK");
   $("#countTxt").style.display="none";
   $("#btnGo").textContent="はじめる";
@@ -751,9 +910,10 @@ async function runAttempt(){
   abortFlag=false;
   waveTrace=[]; drawWave(false);
   if(audioCtx && audioCtx.state==="suspended"){ try{ await audioCtx.resume(); }catch(e){} }
+  if(!analyser) await startMic();   // 取りこぼしていたら つなぎ直す
 
   // ノイズフロア計測
-  let noise = 0.008;
+  let noise = 0.006;
   if(analyser){
     let acc=0,cnt=0;
     const t0=performance.now();
@@ -766,7 +926,8 @@ async function runAttempt(){
     });
     if(cnt) noise = acc/cnt;
   }
-  const thr = Math.max(0.012, noise*2.4);
+  const thr = clamp(noise*2.2, 0.006, 0.030);
+  waveThr = thr;
 
   // カウントダウン
   setPhase("count","よういは いい？");
@@ -800,14 +961,15 @@ async function runAttempt(){
       samples.push(v);
       waveTrace.push(v);
       if(waveTrace.length>140) waveTrace.shift();
-      $("#lvlTxt").textContent = Math.round(clamp(v/0.20,0,1)*100);
+      $("#lvlTxt").textContent = Math.round(clamp(v/LOUD_FULL,0,1)*100);
       drawWave(true);
       requestAnimationFrame(loop);
     })();
   });
   running=false;
+  holdWave=true;
   drawWave(false);
-  if(abortFlag) return;
+  if(abortFlag){ holdWave=false; return; }
 
   setPhase("ready","じゅんび OK");
   $("#btnGo").textContent="はじめる";
@@ -821,7 +983,7 @@ function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 /* ---- 自動採点 ---- */
 function analyze(samples, thr){
   if(!analyser || !samples.length){
-    return {loud:0, dur:0, stab:0, auto:false, raw:{}};
+    return {loud:0, dur:0, stab:0, onset:0, auto:false, raw:{}};
   }
   const voiced = samples.filter(v=>v>thr);
   const ratio = voiced.length / samples.length;
@@ -831,12 +993,18 @@ function analyze(samples, thr){
     const m=mean;
     sd = Math.sqrt(voiced.reduce((a,b)=>a+(b-m)*(b-m),0)/voiced.length);
   }
-  const loud = Math.round(clamp((mean-0.012)/(0.11-0.012),0,1)*100);
+  // 「はじめ」の合図に対して どれだけ すぐに 声を出せたか
+  let first = -1;
+  for(let i=0;i<samples.length;i++){ if(samples[i]>thr){ first=i; break; } }
+  const onsetR = first<0 ? 1 : first/samples.length;
+  const onset = Math.round(clamp((0.75-onsetR)/(0.75-0.15),0,1)*100);
+  const loud = Math.round(clamp((mean-thr)/(LOUD_FULL-thr),0,1)*100);
   const durS = Math.round(clamp(ratio/0.55,0,1)*100);
   const cv = mean>0 ? sd/mean : 1;
   const stab = voiced.length<3 ? 0 : Math.round(clamp(1-(cv-0.15)/0.75,0,1)*100);
-  return {loud:loud, dur:durS, stab:stab, auto:true,
-          raw:{mean:+mean.toFixed(4), ratio:+ratio.toFixed(3), thr:+thr.toFixed(4), sec:db.settings.recSec}};
+  return {loud:loud, dur:durS, stab:stab, onset:onset, auto:true,
+          raw:{mean:+mean.toFixed(4), ratio:+ratio.toFixed(3), thr:+thr.toFixed(4),
+               onset:+onsetR.toFixed(2), sec:db.settings.recSec}};
 }
 
 function todayCount(){
@@ -859,20 +1027,24 @@ function streakDays(){
 }
 
 function computeAxes(a, mouth, listenedFlag){
-  const mouthScore = mouth===3?100 : mouth===2?72 : 45;
+  // ◎ ○ △ の順に かならず 得点が 高くなるようにする
+  const mouthScore = mouth===3?100 : mouth===2?70 : 40;
   const shintai = a.auto ? Math.round(a.dur*0.5 + a.stab*0.5) : mouthScore;
-  const comm    = a.auto ? Math.round(a.loud*0.4 + mouthScore*0.6) : mouthScore;
-  let kankyo;
-  if(a.auto){
-    const mix = a.loud*0.5 + a.dur*0.5;
-    const band = mix>=75 ? 3 : (mix>=45 ? 2 : 1);
-    const diff = Math.abs(band - mouth);
-    kankyo = diff===0 ? 100 : (diff===1 ? 70 : 40);
-  }else{ kankyo = 60; }
-  const shinri = Math.min(100, 40 + (todayCount()+1)*12);
-  const ningen = listenedFlag ? 100 : 55;
-  const kenko  = Math.min(100, 30 + Math.max(streakDays(),1)*14);
+  const comm    = a.auto ? Math.round(a.loud*0.35 + mouthScore*0.65) : mouthScore;
+  // 環境の把握＝合図を受けとって すぐに 声を出せたか（自己評価とは独立）
+  const kankyo  = a.auto ? a.onset : 60;
+  const shinri  = Math.min(100, 40 + (todayCount()+1)*12);
+  const ningen  = listenedFlag ? 100 : 55;
+  const kenko   = Math.min(100, 30 + Math.max(streakDays(),1)*14);
   return {kenko:kenko, shinri:shinri, ningen:ningen, kankyo:kankyo, shintai:shintai, comm:comm};
+}
+/* 自己評価と実測の一致度（指導者向けの参考表示のみ。得点には影響しない） */
+function selfMatch(a, mouth){
+  if(!a.auto || !mouth) return "―";
+  const mix = a.loud*0.5 + a.dur*0.5;
+  const band = mix>=75 ? 3 : (mix>=45 ? 2 : 1);
+  const diff = Math.abs(band-mouth);
+  return diff===0 ? "一致" : (diff===1 ? "やや差あり（実測 "+band+"）" : "差が大きい（実測 "+band+"）");
 }
 
 function showResult(){
@@ -881,7 +1053,8 @@ function showResult(){
   const rows = [
     ["こえの おおきさ", a.loud],
     ["こえを 出せた ながさ", a.dur],
-    ["こえの あんてい", a.stab]
+    ["こえの あんてい", a.stab],
+    ["すぐに 出せた", a.onset]
   ];
   box.innerHTML = rows.map(r=>
     '<div class="brow"><span class="nm">'+r[0]+'</span><span class="tr"><span class="fl" style="width:'+r[1]+'%"></span></span><span class="vl num">'+r[1]+'</span></div>'
@@ -889,7 +1062,8 @@ function showResult(){
   if(!a.auto){
     box.innerHTML = '<p class="sub">マイクが つかえないため、じどう そくていは ありません。</p>';
   }else if(db.settings.teacher){
-    box.innerHTML += '<p class="sub" style="margin-top:8px">平均音量 '+a.raw.mean+' ／ 発声時間比 '+a.raw.ratio+' ／ 閾値 '+a.raw.thr+'</p>';
+    box.innerHTML += '<p class="sub" id="rawLine" style="margin-top:8px">平均音量 '+a.raw.mean
+      +' ／ 発声時間比 '+a.raw.ratio+' ／ 閾値 '+a.raw.thr+' ／ 発声開始 '+a.raw.onset+'</p>';
   }
   updatePreview();
   $("#resultCard").style.display="block";
@@ -901,6 +1075,11 @@ function updatePreview(){
   const ax = computeAxes(pending, m, listened);
   const sc = Math.round(AXES.reduce((s,a)=>s+ax[a.k],0)/AXES.length);
   $("#scoreNum").textContent = selMouth ? sc : "―";
+  const rl = $("#rawLine");
+  if(rl && selMouth){
+    rl.textContent = rl.textContent.split(" ／ ふりかえり")[0]
+      + " ／ ふりかえりの一致：" + selMatch(pending, selMouth);
+  }
 }
 $$("#rateRow button").forEach(b=>{
   b.addEventListener("click", ()=>{
@@ -926,7 +1105,7 @@ $("#btnSave").addEventListener("click", ()=>{
   const rec = {
     id: uid(), learner: db.active, ts: Date.now(), date: ymd(Date.now()),
     level: curLevel, levelName: LEVELS[curLevel].n, item: curWord(),
-    loud: pending.loud, dur: pending.dur, stab: pending.stab,
+    loud: pending.loud, dur: pending.dur, stab: pending.stab, onset: pending.onset,
     mouth: selMouth, listened: listened, axes: ax, score: score
   };
   db.records.push(rec);
@@ -1212,7 +1391,7 @@ function download(name, text, mime){
 $("#btnCsv").addEventListener("click", ()=>{
   const head = ["日付","時刻","なまえ","レベル","ことば","得点",
     "健康の保持","心理的な安定","人間関係の形成","環境の把握","身体の動き","コミュニケーション",
-    "音量","発声時間","安定","口形自己評価","聞いてもらった"];
+    "音量","発声時間","安定","立ち上がり","口形自己評価","聞いてもらった"];
   const lines = [head.join(",")];
   myRecords().forEach(r=>{
     const d=new Date(r.ts);
@@ -1220,7 +1399,7 @@ $("#btnCsv").addEventListener("click", ()=>{
     const a=r.axes||{};
     lines.push([r.date,hm,activeName(),r.levelName||"",r.item,r.score,
       a.kenko,a.shinri,a.ningen,a.kankyo,a.shintai,a.comm,
-      r.loud,r.dur,r.stab,r.mouth,r.listened?1:0].join(","));
+      r.loud,r.dur,r.stab,(r.onset===undefined?"":r.onset),r.mouth,r.listened?1:0].join(","));
   });
   download("hatsuwa_"+activeName()+"_"+ymd(Date.now())+".csv", "\uFEFF"+lines.join("\r\n"), "text/csv;charset=utf-8");
   toast("CSVを 書き出しました");
@@ -1257,6 +1436,36 @@ $("#btnClear").addEventListener("click", ()=>{
   save(); syncAll(); toast("けしました");
 });
 
+/* ---- マイク診断 ---- */
+function renderDiag(note){
+  const t = micStream ? micStream.getAudioTracks()[0] : null;
+  const rows = [
+    ["アドレス", location.protocol + (window.isSecureContext ? "（https OK）" : "　← https でないと つかえません")],
+    ["マイクの ストリーム", micStream ? "あり" : "なし"],
+    ["マイクの なまえ", t ? (t.label || "（名前なし）") : "―"],
+    ["トラック", t ? ((t.enabled?"有効":"無効") + (t.muted?" / ミュート中":"") + " / " + t.readyState) : "―"],
+    ["AudioContext", audioCtx ? audioCtx.state : "未作成"],
+    ["サンプルレート", audioCtx ? audioCtx.sampleRate+" Hz" : "―"],
+    ["アナライザ", analyser ? "つながっています" : "つながっていません"]
+  ];
+  $("#diag").innerHTML =
+    (note ? '<div style="color:#1E9E7E;font-weight:700;margin-bottom:6px">'+note+'</div>' : '')
+    + rows.map(r=>'<div><b style="color:#243450">'+r[0]+'</b>：'+r[1]+'</div>').join("");
+}
+$("#btnDiag").addEventListener("click", async ()=>{
+  if(!analyser) await startMic();
+  renderDiag("そくてい中… こえを 出して ください");
+  let mx=0; const t0=performance.now();
+  await new Promise(res=>{ (function l(){
+    if(performance.now()-t0>1800) return res();
+    const v=rms(); if(v>mx) mx=v;
+    requestAnimationFrame(l);
+  })(); });
+  const val = Math.round(mx*1000);
+  renderDiag("1.8びょうかんの さいだい音量："+val+"（40いじょうなら じゅうぶんです）"
+    + (val<5 ? " ← 音を ひろえていません" : ""));
+});
+
 /* ========================================================================
    13. タブ
    ======================================================================== */
@@ -1264,7 +1473,7 @@ function showPage(id){
   $$(".page").forEach(p=>p.classList.toggle("on", p.id===id));
   $$(".tabbar button").forEach(b=>b.classList.toggle("on", b.dataset.p===id));
   if(id==="pgRecords") renderRecords();
-  if(id==="pgSettings"){ renderLearners(); syncSettings(); }
+  if(id==="pgSettings"){ renderLearners(); syncSettings(); renderDiag(); }
   window.scrollTo(0,0);
 }
 $$(".tabbar button").forEach(b=> b.addEventListener("click", ()=>showPage(b.dataset.p)) );
