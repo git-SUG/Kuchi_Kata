@@ -818,6 +818,109 @@ async function playModel(){
 }
 
 /* ========================================================================
+   5-2. おてほんの こえ（音声合成）と 課題の長さ
+   ======================================================================== */
+let voiceList = [];
+function loadVoices(){
+  if(!("speechSynthesis" in window)) return;
+  try{ voiceList = speechSynthesis.getVoices().filter(v=>/^ja/i.test(v.lang)); }
+  catch(e){ voiceList = []; }
+}
+/* しぜんな 音声：
+   ネットワーク経由の 音声（localService=false）は 機械的でない なめらかな こえ。
+   オフラインの ときや 見つからない ときは 端末内の 音声に もどす。 */
+function isOnline(){ return navigator.onLine !== false; }
+function wantNatural(){ return !!(db && db.settings && db.settings.natural) && isOnline(); }
+function pickVoice(){
+  if(!voiceList.length) return null;
+  const remote = voiceList.filter(v=>v.localService===false);
+  const local  = voiceList.filter(v=>v.localService!==false);
+  if(wantNatural() && remote.length) return remote[0];
+  const nice = local.filter(v=>/premium|enhanced|neural|natural|siri|google/i.test(v.name));
+  return nice[0] || local[0] || voiceList[0];
+}
+/* さいしょの 1もじが 切れる ふぐあい対策：
+   ①cancel の あと 少し まつ ②音量0の 前置きで 音声エンジンを 起こす
+   ③本文の 前に 読点を 入れて 出だしに 余白を つくる */
+function speakWord(text, onend){
+  const S = window.speechSynthesis;
+  if(!S){ if(onend) onend(); return false; }
+  try{ S.cancel(); }catch(e){}
+  setTimeout(function(){
+    try{
+      const warm = new SpeechSynthesisUtterance("\u3000");
+      warm.lang="ja-JP"; warm.volume=0; warm.rate=1;
+      S.speak(warm);
+    }catch(e){}
+    try{
+      const u = new SpeechSynthesisUtterance("、" + text);
+      const v = pickVoice();
+      if(v) u.voice = v;
+      const natural = !!(v && v.localService===false);
+      u.lang  = "ja-JP";
+      u.pitch = 1.0;                        // しぜんな 音声は 高さを いじらない ほうが なめらか
+      u.rate  = natural ? 0.85 : 0.75;      // 端末内の 音声は ゆっくりの ほうが 聞きとりやすい
+      u.volume= 1;
+      if(onend){
+        u.onend = onend;
+        u.onerror = onend;
+        setTimeout(function(){ if(onend){ const f=onend; onend=null; f(); } }, 9000);
+      }
+      S.speak(u);
+    }catch(e){ if(onend) onend(); }
+  }, 180);
+  return true;
+}
+function updateVoiceNote(){
+  const el = $("#voiceNote"); if(!el || !db) return;
+  if(!("speechSynthesis" in window)){ el.textContent="この たんまつでは 音声合成が つかえません。"; return; }
+  if(!voiceList.length) loadVoices();
+  const v = pickVoice();
+  if(!v){ el.textContent="日本語の こえが 見つかりません。よみこみ中の ことも あります。"; return; }
+  const natural = v.localService===false;
+  el.textContent = "いま つかう こえ：" + v.name
+    + "（" + (natural ? "しぜんな 音声・オンライン" : "たんまつ内の 音声") + "）"
+    + (db.settings.natural && !natural
+        ? (isOnline() ? "　※しぜんな 音声が 見つからないため たんまつ内の 音声を つかいます"
+                      : "　※オフラインのため たんまつ内の 音声を つかいます")
+        : "");
+}
+if("speechSynthesis" in window){
+  loadVoices();
+  try{ speechSynthesis.onvoiceschanged = function(){ loadVoices(); updateVoiceNote(); }; }catch(e){}
+}
+
+/* ---- 課題の長さの きじゅん ---- */
+function moraCount(w){
+  let n=0;
+  for(let i=0;i<w.length;i++){
+    const c=w[i];
+    if("ゃゅょぁぃぅぇぉゎ".indexOf(c)>=0) continue;
+    if(c===" " || c==="　") continue;
+    n++;
+  }
+  return Math.max(1,n);
+}
+function getRef(word){
+  const r = db && db.refs && db.refs[word];
+  if(r && r.sec) return {sec:r.sec, seg:r.seg||1, est:false};
+  return {sec:+(moraCount(word)*0.45).toFixed(2), seg:1, est:true};
+}
+function countSegments(samples, thr, gapFrames){
+  let segs=0, inSeg=false, gap=0;
+  for(let i=0;i<samples.length;i++){
+    if(samples[i]>thr){
+      if(!inSeg){ segs++; inSeg=true; }
+      gap=0;
+    }else if(inSeg){
+      gap++;
+      if(gap>=gapFrames) inSeg=false;
+    }
+  }
+  return Math.max(segs,0);
+}
+
+/* ========================================================================
    6. カメラ・マイク
    ======================================================================== */
 function applyVideoStyle(){
@@ -867,8 +970,34 @@ function gum(constraints, ms){
   ]);
 }
 
+/* エラーの 中身を 画面に 出す（端末での 切り分け用） */
+let lastFatal = "";
+function showFatal(title, err){
+  const nm = (err && err.name) ? err.name : "Error";
+  const ms = (err && err.message) ? err.message : String(err);
+  const st = (err && err.stack) ? String(err.stack).split("\n").slice(0,4).join("\n") : "";
+  lastFatal = nm + ": " + ms + (st ? ("\n" + st) : "");
+  console.error("[fatal]", title, err);
+  modal('<div style="font-size:38px">⚠️</div><h3>' + title + '</h3>'
+    + '<p>この 内容を おしえて ください</p>'
+    + '<textarea rows="5" readonly style="font-size:.72rem">' + esc(lastFatal) + '</textarea>'
+    + '<div style="height:10px"></div>'
+    + '<button class="go" id="fcCopy">コピーする</button>'
+    + '<div style="height:8px"></div><button class="go ghost" id="fcOk">とじる</button>');
+  const c=$("#fcCopy");
+  if(c) c.addEventListener("click", ()=>{
+    if(navigator.clipboard) navigator.clipboard.writeText(lastFatal).then(()=>toast("コピーしました")).catch(()=>{});
+    else toast("長おしして コピーして ください");
+  });
+  const b=$("#fcOk"); if(b) b.addEventListener("click", closeModal);
+}
+
 async function startCam(){
-  stopCam();
+  try{ return await startCamInner(); }
+  catch(err){ showFatal("カメラの じゅんびで エラー", err); return false; }
+}
+async function startCamInner(){
+  try{ stopCam(); }catch(e){ console.warn("[cam] stop failed:", e); }
   const vc = { facingMode: db.settings.facing, width:{ideal:1280}, height:{ideal:960} };
   const ac = { echoCancellation:false, noiseSuppression:false, autoGainControl:false };
   let gotAudio = false;
@@ -892,18 +1021,31 @@ async function startCam(){
       return false;
     }
   }
-  const v = $("#vid");
-  v.srcObject = stream;
-  v.muted = true;
-  v.setAttribute("playsinline","");
-  try{ const pr = v.play(); if(pr && pr.catch) pr.catch(function(){}); }catch(e){}
-  $("#camOff").style.display="none";
-  $("#btnFlip").style.display="block";
-  $("#zoomRow").style.display="flex";
-  applyVideoStyle();
+  try{
+    const v = $("#vid");
+    v.srcObject = stream;
+    v.muted = true;
+    v.setAttribute("playsinline","");
+    const pr = v.play(); if(pr && pr.catch) pr.catch(function(){});
+    $("#camOff").style.display="none";
+    $("#btnFlip").style.display="block";
+    $("#zoomRow").style.display="flex";
+    applyVideoStyle();
+  }catch(e){
+    // 表示の じゅんびで こけても 映像は 出ているので つづける
+    console.warn("[cam] setup:", e);
+    lastMicErr = "表示じゅんび："+(e.name||"Error")+" "+(e.message||"");
+  }
 
-  if(gotAudio){ attachAnalyser(stream); }
-  else{ await startMic(); }   // ③ 音声だけ もういちど 単独で 要求する
+  try{
+    if(gotAudio){ attachAnalyser(stream); }
+    else{ await startMic(); }   // ③ 音声だけ もういちど 単独で 要求する
+  }catch(e){
+    console.warn("[mic] setup:", e);
+    lastMicErr = (e.name||"Error")+": "+(e.message||"");
+    setMic("マイク：しっぱい", false);
+    $("#btnMic").style.display="block";
+  }
   return true;
 }
 
@@ -1086,6 +1228,7 @@ function fitCanvas(cv, h){
     cv._fw=w; cv._fh=h; cv._fd=dpr; cv._ctx=null;
   }
   const c = cv._ctx || (cv._ctx = cv.getContext("2d"));
+  if(!c) return {c:null, w:w, h:h};
   if(need) c.setTransform(dpr,0,0,dpr,0,0);
   return {c:c, w:w, h:h};
 }
@@ -1154,7 +1297,7 @@ $("#btnGo").addEventListener("click", async ()=>{
     $("#btnGo").textContent = "じゅんび中…";
     let ok = false;
     try{ ok = await startCam(); }
-    catch(err){ console.error("[cam]", err); toast("カメラを 開始できません："+(err.message||err)); }
+    catch(err){ showFatal("カメラを 開始できません", err); }
     finally{
       $("#btnGo").disabled = false;
       if(!ok) $("#btnGo").textContent = "カメラを つける";
@@ -1411,7 +1554,7 @@ function showResult(){
   }
   updatePreview();
   $("#resultCard").style.display="block";
-  $("#resultCard").scrollIntoView({behavior:"smooth", block:"nearest"});
+  try{ const rc=$("#resultCard"); if(rc.scrollIntoView) rc.scrollIntoView({behavior:"smooth", block:"nearest"}); }catch(e){}
 }
 function updatePreview(){
   if(!pending) return;
@@ -1519,6 +1662,7 @@ function showMedalModal(m){
 function drawBar(){
   const cv = $("#barChart");
   const g = fitCanvas(cv, 210), c=g.c, W=g.w, H=g.h;
+  if(!c) return;
   c.clearRect(0,0,W,H);
   const days=[];
   for(let i=13;i>=0;i--) days.push(ymd(Date.now()-i*86400000));
@@ -1564,6 +1708,7 @@ function drawBar(){
 function drawRadar(){
   const cv = $("#radarChart");
   const g = fitCanvas(cv, 300), c=g.c, W=g.w, H=g.h;
+  if(!c) return;
   c.clearRect(0,0,W,H);
   const cx=W/2, cy=H/2+4, R=Math.min(W,H)/2-52;
   const rs = myRecords().slice(-10);
@@ -1992,7 +2137,8 @@ function renderDiag(note){
     ["AudioContext", audioCtx ? audioCtx.state : "未作成"],
     ["サンプルレート", audioCtx ? audioCtx.sampleRate+" Hz" : "―"],
     ["アナライザ", analyser ? "つながっています" : "つながっていません"],
-    ["さいごの エラー", lastMicErr || "なし"]
+    ["さいごの エラー", lastMicErr || "なし"],
+    ["くわしい エラー", lastFatal ? esc(lastFatal.split("\n")[0]) : "なし"]
   ];
   $("#diag").innerHTML =
     (note ? '<div style="color:#1E9E7E;font-weight:700;margin-bottom:6px">'+note+'</div>' : '')
