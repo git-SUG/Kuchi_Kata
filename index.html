@@ -846,9 +846,25 @@ function micErrText(e){
     TrackStartError:"マイクを 開始できません",
     OverconstrainedError:"この マイクでは つかえない せっていです",
     SecurityError:"https でないため つかえません",
-    AbortError:"とちゅうで 中断されました"
+    AbortError:"とちゅうで 中断されました",
+    TimeoutError:"きょかの おうとうが ありません（ダイアログが 出ていないか かくにん）"
   };
   return (map[n] || "げんいん ふめい") + "（" + n + "）";
+}
+
+/* 端末や 管理設定に よっては きょかダイアログが 返って こないことが あるため、
+   かならず 時間で 打ちきる */
+function gum(constraints, ms){
+  return Promise.race([
+    navigator.mediaDevices.getUserMedia(constraints),
+    new Promise(function(_,rej){
+      setTimeout(function(){
+        const e = new Error("timeout");
+        e.name = "TimeoutError";
+        rej(e);
+      }, ms || 15000);
+    })
+  ]);
 }
 
 async function startCam(){
@@ -859,14 +875,14 @@ async function startCam(){
 
   // ① まず 映像＋音声を まとめて 要求する（きょかダイアログが 1回で すむ）
   try{
-    stream = await navigator.mediaDevices.getUserMedia({video:vc, audio:ac});
+    stream = await gum({video:vc, audio:ac});
     gotAudio = stream.getAudioTracks().length>0;
   }catch(e){
     console.warn("[mic] video+audio failed:", e.name, e.message);
     lastMicErr = micErrText(e);
     // ② 音声つきが だめなら 映像だけで 続行する
     try{
-      stream = await navigator.mediaDevices.getUserMedia({video:vc, audio:false});
+      stream = await gum({video:vc, audio:false});
     }catch(e2){
       console.warn("[cam] video only failed:", e2.name, e2.message);
       modal('<div style="font-size:38px">📷</div><h3>カメラを つかえません</h3>'
@@ -880,7 +896,7 @@ async function startCam(){
   v.srcObject = stream;
   v.muted = true;
   v.setAttribute("playsinline","");
-  try{ await v.play(); }catch(e){}
+  try{ const pr = v.play(); if(pr && pr.catch) pr.catch(function(){}); }catch(e){}
   $("#camOff").style.display="none";
   $("#btnFlip").style.display="block";
   $("#zoomRow").style.display="flex";
@@ -911,7 +927,7 @@ async function startMic(){
   ];
   for(let i=0;i<tries.length;i++){
     try{
-      micStream = await navigator.mediaDevices.getUserMedia({audio:tries[i]});
+      micStream = await gum({audio:tries[i]});
       lastMicErr = "";
       return attachAnalyser(micStream);
     }catch(e){
@@ -994,7 +1010,7 @@ function stopVideo(){
   $("#vid").srcObject = null;
 }
 function stopMic(){
-  meterOn = false;
+  meterOn = false; meterGen++;
   if(srcNode){ try{ srcNode.disconnect(); }catch(e){} srcNode=null; }
   analyser = null;
   if(micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream=null; }
@@ -1010,22 +1026,26 @@ function rms(){
 }
 
 /* 待機中も常に波を動かす（マイクが生きているか一目で分かるように） */
+let meterGen = 0;
 function startMeter(){
   if(meterOn) return;
   meterOn = true;
-  let tick = 0;
-  (function loop(){
-    if(!meterOn) return;
+  const gen = ++meterGen;          // 古い ループを かならず 止める
+  let last = 0, tick = 0;
+  (function loop(ts){
+    if(!meterOn || gen !== meterGen) return;
     requestAnimationFrame(loop);
-    if(++tick % 45 === 0) updateCtxState();   // 音声処理が 止まっていないか みはる
+    if(++tick % 120 === 0) updateCtxState();  // 約2びょうごとに 状態を みはる
     if(running || holdWave) return;           // 録音中・結果表示中は上書きしない
     if(document.hidden) return;
     if(!$("#pgPractice").classList.contains("on")) return;
+    if(ts && ts-last < 50) return;             // 20fps に おさえる
+    last = ts || 0;
     const v = rms();
     waveTrace.push(v);
     if(waveTrace.length>140) waveTrace.shift();
     drawWave(true);
-  })();
+  })(0);
 }
 $("#btnMic").addEventListener("click", async ()=>{
   setMic("マイク：せつぞくちゅう…");
@@ -1054,18 +1074,26 @@ $("#zOut").addEventListener("click", ()=>{ zoom=clamp(zoom-0.2,1,3); db.settings
    ======================================================================== */
 const waveCv = $("#wave");
 let waveTrace = [];
+/* canvas の 大きさを 毎回 書きかえると レイアウト計算が くりかえされ
+   端末が おもくなるため、サイズが 変わった ときだけ 作りなおす */
 function fitCanvas(cv, h){
   const dpr = window.devicePixelRatio || 1;
   const w = cv.clientWidth || 300;
-  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
-  cv.style.height = h+"px";
-  const c = cv.getContext("2d");
-  c.setTransform(dpr,0,0,dpr,0,0);
+  const need = (cv._fw!==w || cv._fh!==h || cv._fd!==dpr);
+  if(need){
+    cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+    cv.style.height = h+"px";
+    cv._fw=w; cv._fh=h; cv._fd=dpr; cv._ctx=null;
+  }
+  const c = cv._ctx || (cv._ctx = cv.getContext("2d"));
+  if(need) c.setTransform(dpr,0,0,dpr,0,0);
   return {c:c, w:w, h:h};
 }
 function drawWave(live){
+  if(!waveCv || !waveCv.clientWidth) return;
   const hh0 = (window.innerWidth>=900) ? 56 : 44;
   const g = fitCanvas(waveCv, hh0), c=g.c;
+  if(!c) return;
   c.clearRect(0,0,g.w,g.h);
   // baseline
   c.strokeStyle="rgba(255,255,255,.22)"; c.lineWidth=1;
@@ -1123,8 +1151,14 @@ $("#btnGo").addEventListener("click", async ()=>{
   ensureAudioCtx();                    // 操作の 直後に 音声処理を 起こす
   if(phase==="off"){
     $("#btnGo").disabled = true;
-    const ok = await startCam();
-    $("#btnGo").disabled = false;
+    $("#btnGo").textContent = "じゅんび中…";
+    let ok = false;
+    try{ ok = await startCam(); }
+    catch(err){ console.error("[cam]", err); toast("カメラを 開始できません："+(err.message||err)); }
+    finally{
+      $("#btnGo").disabled = false;
+      if(!ok) $("#btnGo").textContent = "カメラを つける";
+    }
     if(!ok) return;
     setPhase("ready","じゅんび OK");
     $("#btnGo").textContent = "はじめる";
