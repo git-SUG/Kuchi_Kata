@@ -415,13 +415,9 @@
 
     <div class="card">
       <h2>おてほんの こえ</h2>
-      <p class="sub">「おてほんを きく」で つかう こえを えらべます。</p>
-      <div class="seg" id="voiceSeg" style="flex-wrap:wrap">
-        <button data-v="kid1">小学校 ていがくねん</button>
-        <button data-v="kid2">小学校 こうがくねん</button>
-        <button data-v="man">おとな（男）</button>
-        <button data-v="woman">おとな（女）</button>
-      </div>
+      <div class="frow"><label>しぜんな 音声
+        <span class="desc">デバイスが オンラインの ときは しぜんな 音声を つかう</span></label>
+        <div class="sw" id="swNatural"></div></div>
       <div style="height:12px"></div>
       <button class="mini" id="btnVoiceTest">この こえで ためす</button>
       <p class="sub" id="voiceNote" style="margin-top:8px"></p>
@@ -577,7 +573,7 @@ function defaultDb(){
     learners:[{id:id, name:"じぶん"}],
     active:id,
     settings:{mirror:true, guide:true, zoom:1.6, recSec:4, unlockAll:false, teacher:false,
-              facing:"user", voice:"kid1", useRef:true},
+              facing:"user", natural:true, useRef:true},
     records:[],
     custom:[],
     refs:{},
@@ -818,32 +814,25 @@ async function playModel(){
 /* ========================================================================
    5-2. おてほんの こえ（音声合成）
    ======================================================================== */
-const VOICES = {
-  kid1 :{nm:"小学校 ていがくねん", rate:0.60, pitch:1.55, g:"f"},
-  kid2 :{nm:"小学校 こうがくねん", rate:0.70, pitch:1.28, g:"f"},
-  man  :{nm:"おとな（男）",         rate:0.75, pitch:0.80, g:"m"},
-  woman:{nm:"おとな（女）",         rate:0.75, pitch:1.05, g:"f"}
-};
-const MALE_RE   = /otoya|hattori|ichiro|daichi|keita|takumi|男|male/i;
-const FEMALE_RE = /kyoko|o-?ren|mizuki|nanami|haruka|ayumi|sayaka|tomoko|女|female/i;
 let voiceList = [];
 function loadVoices(){
   if(!("speechSynthesis" in window)) return;
   try{ voiceList = speechSynthesis.getVoices().filter(v=>/^ja/i.test(v.lang)); }
   catch(e){ voiceList = []; }
 }
-function pickVoice(g){
+/* しぜんな 音声：
+   ネットワーク経由の 音声（localService=false）は 機械的でない なめらかな こえ。
+   オフラインの ときや 見つからない ときは 端末内の 音声に もどす。 */
+function isOnline(){ return navigator.onLine !== false; }
+function wantNatural(){ return !!(db && db.settings.natural) && isOnline(); }
+function pickVoice(){
   if(!voiceList.length) return null;
-  if(g==="m"){
-    const m = voiceList.filter(v=>MALE_RE.test(v.name));
-    if(m.length) return m[0];
-    const notF = voiceList.filter(v=>!FEMALE_RE.test(v.name));
-    return notF[0] || voiceList[0];
-  }
-  const f = voiceList.filter(v=>FEMALE_RE.test(v.name));
-  return f[0] || voiceList[0];
+  const remote = voiceList.filter(v=>v.localService===false);
+  const local  = voiceList.filter(v=>v.localService!==false);
+  if(wantNatural() && remote.length) return remote[0];
+  const nice = local.filter(v=>/premium|enhanced|neural|natural|siri|google/i.test(v.name));
+  return nice[0] || local[0] || voiceList[0];
 }
-function voicePreset(){ return VOICES[(db && db.settings.voice) || "kid1"] || VOICES.kid1; }
 
 /* さいしょの 1もじが 切れる ふぐあい対策：
    ①cancel の あと 少し まつ ②音量0の 前置きで 音声エンジンを 起こす
@@ -851,19 +840,23 @@ function voicePreset(){ return VOICES[(db && db.settings.voice) || "kid1"] || VO
 function speakWord(text, onend){
   const S = window.speechSynthesis;
   if(!S){ if(onend) onend(); return false; }
-  const p = voicePreset();
   try{ S.cancel(); }catch(e){}
   setTimeout(function(){
     try{
-      const warm = new SpeechSynthesisUtterance("　");
+      const warm = new SpeechSynthesisUtterance("\u3000");
       warm.lang="ja-JP"; warm.volume=0; warm.rate=1;
       S.speak(warm);
     }catch(e){}
     let u;
     try{
       u = new SpeechSynthesisUtterance("、" + text);
-      u.lang="ja-JP"; u.rate=p.rate; u.pitch=p.pitch; u.volume=1;
-      const v = pickVoice(p.g); if(v) u.voice = v;
+      const v = pickVoice();
+      if(v) u.voice = v;
+      const natural = !!(v && v.localService===false);
+      u.lang  = "ja-JP";
+      u.pitch = 1.0;                        // しぜんな 音声は 高さを いじらない ほうが なめらか
+      u.rate  = natural ? 0.85 : 0.75;      // 端末内の 音声は ゆっくりの ほうが 聞きとりやすい
+      u.volume= 1;
       if(onend){
         u.onend = onend;
         u.onerror = onend;
@@ -877,10 +870,15 @@ function speakWord(text, onend){
 function updateVoiceNote(){
   const el = $("#voiceNote"); if(!el || !db) return;
   if(!("speechSynthesis" in window)){ el.textContent="この たんまつでは 音声合成が つかえません。"; return; }
-  const p = voicePreset();
-  const v = pickVoice(p.g);
-  el.textContent = "いまの せってい：" + p.nm
-    + "／つかう こえ：" + (v ? v.name : "日本語の こえが 見つかりません（はやさと 高さだけ かえます）");
+  const v = pickVoice();
+  if(!v){ el.textContent="日本語の こえが 見つかりません。よみこみ中の ことも あります。"; return; }
+  const natural = v.localService===false;
+  el.textContent = "いま つかう こえ：" + v.name
+    + "（" + (natural ? "しぜんな 音声・オンライン" : "たんまつ内の 音声") + "）"
+    + (db.settings.natural && !natural
+        ? (isOnline() ? "　※しぜんな 音声が 見つからないため たんまつ内の 音声を つかいます"
+                      : "　※オフラインのため たんまつ内の 音声を つかいます")
+        : "");
 }
 if("speechSynthesis" in window){
   loadVoices();
@@ -1704,13 +1702,10 @@ bindSwitch("#swUnlock","unlockAll", renderChips);
 bindSwitch("#swTeacher","teacher");
 bindSwitch("#swUseRef","useRef");
 
-$$("#voiceSeg button").forEach(b=>{
-  b.addEventListener("click", ()=>{
-    db.settings.voice = b.dataset.v; save(); syncSettings();
-    speakWord("あいうえお");
-  });
-});
+bindSwitch("#swNatural","natural", ()=>{ loadVoices(); updateVoiceNote(); });
 $("#btnVoiceTest").addEventListener("click", ()=>{ speakWord(curWord()); });
+window.addEventListener("online",  updateVoiceNote);
+window.addEventListener("offline", updateVoiceNote);
 
 $("#zoomRange").addEventListener("input", e=>{
   zoom = parseInt(e.target.value,10)/100;
@@ -1727,7 +1722,7 @@ function syncSettings(){
   $("#swUnlock").classList.toggle("on", !!db.settings.unlockAll);
   $("#swTeacher").classList.toggle("on", !!db.settings.teacher);
   $("#swUseRef").classList.toggle("on", !!db.settings.useRef);
-  $$("#voiceSeg button").forEach(b=>b.classList.toggle("on", b.dataset.v===db.settings.voice));
+  $("#swNatural").classList.toggle("on", !!db.settings.natural);
   updateVoiceNote();
   $("#zoomRange").value = Math.round(db.settings.zoom*100);
   $("#zoomLbl").textContent = Number(db.settings.zoom).toFixed(1)+" ばい";
