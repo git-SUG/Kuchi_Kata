@@ -176,6 +176,8 @@
   .seg button{padding:8px 12px; border-radius:12px; border:2px solid var(--line); font-weight:700; font-size:.85rem;}
   .seg button.on{background:var(--ink); color:#fff; border-color:var(--ink);}
   input[type=text]{border:2px solid var(--line); border-radius:12px; padding:10px 12px; width:100%;}
+  select.sel{width:100%; border:2px solid var(--line); border-radius:12px; padding:10px 12px;
+             background:var(--card); font-family:inherit; font-size:.9rem; color:var(--ink);}
   textarea{width:100%; border:2px solid var(--line); border-radius:12px; padding:10px 12px;
            font-family:inherit; font-size:.95rem; line-height:1.7; resize:vertical; color:var(--ink);}
   .setrow{display:flex; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid var(--line);}
@@ -467,6 +469,11 @@
     <div class="card">
       <h2>マイクの かくにん</h2>
       <p class="sub">「こえの なみ」が うごかない ときは ここを 見てください。</p>
+      <div class="frow"><label>つかう マイク
+        <span class="desc">ヘッドセットが つながっていると そちらが えらばれます。
+          音を ひろえない ときは 本体の マイクに かえて ください</span></label></div>
+      <select id="micSel" class="sel"></select>
+      <div style="height:12px"></div>
       <div id="diag" class="sub" style="line-height:1.9"></div>
       <button class="mini" id="btnDiag">いまの じょうたいを しらべる</button>
     </div>
@@ -573,7 +580,7 @@ function defaultDb(){
     learners:[{id:id, name:"じぶん"}],
     active:id,
     settings:{mirror:true, guide:true, zoom:1.6, recSec:4, unlockAll:false, teacher:false,
-              facing:"user", natural:true, useRef:true},
+              facing:"user", natural:true, useRef:true, micId:""},
     records:[],
     custom:[],
     refs:{},
@@ -762,7 +769,7 @@ $("#btnSpeak").addEventListener("click", ()=>{ playModel(); });
 
 async function playModel(){
   if(running) return;
-  ensureAudioCtx();
+  await ensureLiveMic();
   if(!("speechSynthesis" in window)){ toast("この たんまつでは おてほんの こえは つかえません"); return; }
   const word = curWord();
   if(!analyser || !db.settings.useRef){ speakWord(word); return; }
@@ -808,6 +815,7 @@ async function playModel(){
     modal('<div style="font-size:38px">🔉</div><h3>おてほんの 音が 小さいです</h3>'
       +'<p style="text-align:left">ひろえた さいだい音量：'+Math.round(peak*1000)
       +'（40いじょう ひつよう）<br><br>'
+      +'・「せってい」→「つかう マイク」が 本体の マイクに なっているか<br>'
       +'・スピーカーから 音が 出ているか（イヤホンだと はかれません）<br>'
       +'・端末を 口もとに 近づける<br>'
       +'・はかれない ときは「せってい」→「おてほんの 波形で 長さの きじゅんを つくる」を オフにすると、'
@@ -999,7 +1007,7 @@ async function startCam(){
 async function startCamInner(){
   try{ stopCam(); }catch(e){ console.warn("[cam] stop failed:", e); }
   const vc = { facingMode: db.settings.facing, width:{ideal:1280}, height:{ideal:960} };
-  const ac = { echoCancellation:false, noiseSuppression:false, autoGainControl:false };
+  const ac = audioConstraints();
   let gotAudio = false;
 
   // ① まず 映像＋音声を まとめて 要求する（きょかダイアログが 1回で すむ）
@@ -1060,16 +1068,14 @@ async function startMic(){
     lastMicErr = "https で ひらいていません";
     setMic("マイク：https でない", false); $("#btnMic").style.display="block"; return false;
   }
-  // 映像側の ストリームに 音声が あれば それを つかう
-  if(stream && stream.getAudioTracks().length){ return attachAnalyser(stream); }
+  // 映像側の ストリームに 生きている 音声が あれば それを つかう
+  if(stream && liveAudio(stream)){ return attachAnalyser(stream); }
 
-  const tries = [
-    { echoCancellation:false, noiseSuppression:false, autoGainControl:false },
-    true
-  ];
+  const tries = [audioConstraints(), {echoCancellation:false}, true];
   for(let i=0;i<tries.length;i++){
     try{
       micStream = await gum({audio:tries[i]});
+      if(!liveAudio(micStream)){ throw new Error("track ended"); }
       lastMicErr = "";
       return attachAnalyser(micStream);
     }catch(e){
@@ -1100,16 +1106,69 @@ function ensureAudioCtx(){
 }
 function updateCtxState(){
   if(!analyser) return;
+  if(recovering) return;
   if(audioCtx && audioCtx.state!=="running"){
     setMic("マイク：とまっています（画面を タップ）", false);
-  }else{
-    setMic("マイク：OK", true);
+    return;
   }
+  if(!activeTrack()){
+    setMic("マイク：とぎれています", false);
+    recoverMic("watch");
+    return;
+  }
+  setMic("マイク：OK", true);
 }
 /* 画面の どこを さわっても 音声処理を 起こしなおす */
 document.addEventListener("pointerdown", function(){
   if(audioCtx && audioCtx.state==="suspended"){ ensureAudioCtx(); }
 }, true);
+
+/* えらんだ マイクを つかう ための 条件 */
+function audioConstraints(){
+  const a = { echoCancellation:false, noiseSuppression:false, autoGainControl:false };
+  const id = db && db.settings ? db.settings.micId : "";
+  if(id) a.deviceId = { exact:id };
+  return a;
+}
+/* 生きている 音声トラックが あるか */
+function liveAudio(st){
+  if(!st) return null;
+  const ts = st.getAudioTracks().filter(t=>t.readyState==="live");
+  return ts.length ? ts[0] : null;
+}
+let audioSrcStream = null;
+function activeTrack(){
+  if(micStream && liveAudio(micStream)) return liveAudio(micStream);
+  if(stream && liveAudio(stream)) return liveAudio(stream);
+  return null;
+}
+/* トラックが 切れたら 自動で つなぎ直す（Bluetooth では よく おこる） */
+let recovering = false;
+async function recoverMic(why){
+  if(recovering) return false;
+  recovering = true;
+  console.warn("[mic] recover:", why);
+  setMic("マイク：とぎれました（つなぎ直し中）", false);
+  let ok = false;
+  try{ ok = await startMic(); }catch(e){ console.warn(e); }
+  recovering = false;
+  if(!ok){ setMic("マイク：とぎれています", false); $("#btnMic").style.display="block"; }
+  return ok;
+}
+function watchTrack(t){
+  if(!t) return;
+  try{
+    t.onended  = function(){ recoverMic("ended"); };
+    t.onmute   = function(){ setMic("マイク：ミュート中", false); };
+    t.onunmute = function(){ updateCtxState(); };
+  }catch(e){}
+}
+/* れんしゅう・おてほんの 直前に かならず 生きた マイクを 用意する */
+async function ensureLiveMic(){
+  ensureAudioCtx();
+  if(!analyser || !activeTrack()) return await recoverMic("not live");
+  return true;
+}
 
 /* 解析ノードを つくる */
 function attachAnalyser(src){
@@ -1118,6 +1177,8 @@ function attachAnalyser(src){
     if(!AC){ throw new Error("no AudioContext"); }
     ensureAudioCtx();
     if(srcNode){ try{ srcNode.disconnect(); }catch(e){} }
+    audioSrcStream = src;
+    watchTrack(liveAudio(src));
     srcNode  = audioCtx.createMediaStreamSource(src);
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 1024;
@@ -1338,8 +1399,7 @@ async function runAttemptInner(){
   hideResult();
   abortFlag=false;
   waveTrace=[]; drawWave(false);
-  ensureAudioCtx();
-  if(!analyser) await startMic();
+  await ensureLiveMic();
 
   // ノイズフロア計測
   let noise = 0.006;
@@ -1400,10 +1460,13 @@ function warnNoSound(){
     +'<p style="text-align:left">音声しょり：'+st+'<br>'
     +(st!=="running"
       ? "音声しょりが とまっています。画面を 1かい タップしてから もういちど おためしください。"
-      : "マイクは つながっていますが、音が 0 の ままです。<br>"
+      : "マイクは つながっていますが、音が 0 の ままです。<br><br>"
+        +"<b>いちばん おおい げんいん</b><br>"
+        +"ヘッドセットなど 本体いがいの マイクが えらばれていて、それが 切れています。<br>"
+        +"「せってい」→「マイクの かくにん」→「つかう マイク」で、"
+        +"<b>本体の マイク（Microphone Array など）</b>を えらんで ください。<br><br>"
         +"・端末本体の マイクが ミュートに なっていないか<br>"
-        +"・「せってい」→「マイクの かくにん」で さいだい音量を みる<br>"
-        +"・外づけマイクや ヘッドセットの せんたくを かくにん")
+        +"・同じ画面の「いまの じょうたいを しらべる」で さいだい音量を みる")
     +'</p><button class="go" id="nsOk">とじる</button>');
   const b=$("#nsOk"); if(b) b.addEventListener("click", closeModal);
 }
@@ -1857,6 +1920,13 @@ bindSwitch("#swUseRef","useRef");
 
 bindSwitch("#swNatural","natural", ()=>{ loadVoices(); updateVoiceNote(); });
 $("#btnVoiceTest").addEventListener("click", ()=>{ speakWord(curWord()); });
+$("#micSel").addEventListener("change", async (e)=>{
+  db.settings.micId = e.target.value; save();
+  setMic("マイク：きりかえ中…");
+  const ok = await startMic();
+  await probeEnv(); renderDiag();
+  toast(ok ? "マイクを きりかえました" : "この マイクは つかえませんでした");
+});
 window.addEventListener("online",  updateVoiceNote);
 window.addEventListener("offline", updateVoiceNote);
 
@@ -2121,19 +2191,29 @@ async function probeEnv(){
   }catch(e){ diagPerm = "しらべられません"; }
   try{
     const ds = await navigator.mediaDevices.enumerateDevices();
-    const ins = ds.filter(d=>d.kind==="audioinput");
-    diagDev = ins.length ? (ins.length+"こ：" + ins.map(d=>d.label||"（名前は許可後に表示）").join(" / "))
-                         : "0こ ← マイクが 認識されていません";
+    const ins = ds.filter(d=>d.kind==="audioinput" && d.deviceId!=="communications");
+    diagDev = ins.length ? (ins.length+"こ") : "0こ ← マイクが 認識されていません";
+    const sel = $("#micSel");
+    if(sel){
+      const cur = (db && db.settings.micId) || "";
+      sel.innerHTML = '<option value="">じどう（きてい の マイク）</option>'
+        + ins.map(d=>'<option value="'+esc(d.deviceId)+'">'+esc(d.label||"マイク")+'</option>').join("");
+      sel.value = cur;
+      if(sel.value !== cur) sel.value = "";
+    }
   }catch(e){ diagDev = "しらべられません"; }
 }
 function renderDiag(note){
-  const t = micStream ? micStream.getAudioTracks()[0]
-          : (stream && stream.getAudioTracks().length ? stream.getAudioTracks()[0] : null);
+  const t = activeTrack()
+          || (micStream && micStream.getAudioTracks()[0])
+          || (stream && stream.getAudioTracks()[0]) || null;
   const rows = [
     ["アドレス", location.protocol + (window.isSecureContext ? "（https OK）" : "　← https でないと つかえません")],
     ["マイクの きょか", diagPerm],
     ["マイク デバイス", diagDev],
-    ["音声トラック", t ? ((t.enabled?"有効":"無効") + (t.muted?" / ミュート中":"") + " / " + t.readyState + " / " + (t.label||"名前なし")) : "なし"],
+    ["音声トラック", t ? ((t.enabled?"有効":"無効") + (t.muted?" / ミュート中":"")
+        + " / " + (t.readyState==="live" ? "live（正常）" : t.readyState+" ← 切れています")
+        + " / " + (t.label||"名前なし")) : "なし"],
     ["AudioContext", audioCtx ? audioCtx.state : "未作成"],
     ["サンプルレート", audioCtx ? audioCtx.sampleRate+" Hz" : "―"],
     ["アナライザ", analyser ? "つながっています" : "つながっていません"],
@@ -2145,9 +2225,7 @@ function renderDiag(note){
     + rows.map(r=>'<div><b style="color:#243450">'+r[0]+'</b>：'+r[1]+'</div>').join("");
 }
 $("#btnDiag").addEventListener("click", async ()=>{
-  ensureAudioCtx();
-  await probeEnv();
-  if(!analyser) await startMic();
+  await ensureLiveMic();
   await probeEnv();
   renderDiag("そくてい中… こえを 出して ください");
   let mx=0; const t0=performance.now();
