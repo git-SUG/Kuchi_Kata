@@ -176,6 +176,13 @@
   .seg button{padding:8px 12px; border-radius:12px; border:2px solid var(--line); font-weight:700; font-size:.85rem;}
   .seg button.on{background:var(--ink); color:#fff; border-color:var(--ink);}
   input[type=text]{border:2px solid var(--line); border-radius:12px; padding:10px 12px; width:100%;}
+  textarea{width:100%; border:2px solid var(--line); border-radius:12px; padding:10px 12px;
+           font-family:inherit; font-size:.95rem; line-height:1.7; resize:vertical; color:var(--ink);}
+  .setrow{display:flex; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid var(--line);}
+  .setrow:last-child{border-bottom:none;}
+  .setrow .nm{flex:1 1 auto; font-weight:700; font-size:.9rem; min-width:0;}
+  .setrow .nm span{display:block; font-size:.74rem; color:var(--lav); font-weight:400;
+                   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   input[type=range]{width:100%; accent-color:var(--mint);}
   .danger{color:#C63B3B;}
 
@@ -245,6 +252,17 @@
     }
     .tabbar button{padding:9px 26px; font-size:.8rem;}
     .tabbar .ic{font-size:1.2rem;}
+
+    /* れんしゅう中は 画面内に おさめる（スクロールしない） */
+    body.practice{overflow:hidden; height:100vh;}
+    body.practice #app{height:100vh; overflow:hidden; padding-bottom:92px;}
+    body.practice #pgPractice.on{height:calc(100vh - 152px); align-items:stretch;}
+    body.practice #pMain{position:static; height:100%; min-height:0;
+                         display:flex; flex-direction:column;}
+    body.practice #pMain .stage{flex:1 1 auto; aspect-ratio:auto; height:auto; min-height:150px;}
+    body.practice #pTop{min-height:0;}
+    body.practice #pSide{min-height:0; overflow-y:auto; padding-right:4px;}
+    body.practice #pTop .card{margin-bottom:12px;}
   }
   @media (min-width: 1200px){
     #app{max-width:1200px;}
@@ -273,6 +291,7 @@
         <div class="modelinfo">
           <div class="mouthbox" id="mouthBox"></div>
           <p class="hint" id="hintTxt">おおきく くちを あける</p>
+          <p class="sub" id="refTxt" style="margin:-4px 0 8px"></p>
           <div class="rowbtns">
             <button class="mini" id="btnSpeak">🔊 おてほんを きく</button>
             <button class="mini" id="btnNextWord">つぎの ことば ▸</button>
@@ -293,7 +312,7 @@
       <div class="wavewrap" id="waveWrap">
         <div class="lab">
           <span>こえの なみ</span>
-          <span><span id="micState">マイク：まだ</span>　<span class="num" id="lvlTxt">0</span></span>
+          <span id="micState">マイク：まだ</span>
         </div>
         <canvas id="wave"></canvas>
       </div>
@@ -395,9 +414,58 @@
     </div>
 
     <div class="card">
+      <h2>おてほんの こえ</h2>
+      <p class="sub">「おてほんを きく」で つかう こえを えらべます。</p>
+      <div class="seg" id="voiceSeg" style="flex-wrap:wrap">
+        <button data-v="kid1">小学校 ていがくねん</button>
+        <button data-v="kid2">小学校 こうがくねん</button>
+        <button data-v="man">おとな（男）</button>
+        <button data-v="woman">おとな（女）</button>
+      </div>
+      <div style="height:12px"></div>
+      <button class="mini" id="btnVoiceTest">この こえで ためす</button>
+      <p class="sub" id="voiceNote" style="margin-top:8px"></p>
+      <div class="frow"><label>おてほんの 波形で 長さの きじゅんを つくる
+        <span class="desc">「おてほんを きく」の 音を マイクで はかり、ことばごとの 基準にします</span></label>
+        <div class="sw" id="swUseRef"></div></div>
+    </div>
+
+    <div class="card">
       <h2>せんせい せってい</h2>
       <div class="frow"><label>ぜんレベル かいほう<span class="desc">クリアしていない レベルも つかえる</span></label><div class="sw" id="swUnlock"></div></div>
       <div class="frow"><label>くわしい すうち<span class="desc">音量・発声時間などの 生データを表示</span></label><div class="sw" id="swTeacher"></div></div>
+    </div>
+
+    <div class="card">
+      <h2>おてほんの ことば（せんせい用）</h2>
+      <p class="sub">クラスの じったいに あわせた ことばや 文を ついかできます。
+        ついかした セットは レベルの 右はしに ならび、いつでも つかえます。</p>
+      <div id="setList"></div>
+      <div style="height:12px"></div>
+      <input type="text" id="setName" placeholder="セットの なまえ（例：2学期のことば）" maxlength="20">
+      <div style="height:8px"></div>
+      <input type="text" id="setHint" placeholder="はつおんの ポイント（例：さいごまで はっきり）" maxlength="34">
+      <div style="height:8px"></div>
+      <textarea id="setItems" rows="6" placeholder="1ぎょうに 1つずつ 入力します&#10;さかな&#10;きゅうしょく&#10;おはようございます"></textarea>
+      <div style="height:10px"></div>
+      <div class="rowbtns">
+        <button class="mini" id="btnSetSave">ほぞんする</button>
+        <button class="mini" id="btnSetNew">あたらしく つくる</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>ことばを 児童の たんまつに くばる</h2>
+      <p class="sub">先生の 端末で つくった ことばを、リンクか コードで 児童の 端末に わたせます。
+        リンクは Classroom などに はりつけて 配れます。児童が ひらくと ことばだけが ついかされ、
+        きろくは そのまま のこります。</p>
+      <div class="rowbtns">
+        <button class="mini" id="btnShareLink">くばる リンクを つくる</button>
+        <button class="mini" id="btnShareCode">コードを つくる</button>
+        <button class="mini" id="btnReadCode">はりつけた ものを 読みこむ</button>
+      </div>
+      <div style="height:10px"></div>
+      <textarea id="shareBox" rows="3" placeholder="ここに リンクや コードが 出ます。読みこむ ときは、もらった リンクか コードを ここに はりつけて「はりつけた ものを 読みこむ」を おします。"></textarea>
     </div>
 
     <div class="card">
@@ -508,8 +576,11 @@ function defaultDb(){
     v:1,
     learners:[{id:id, name:"じぶん"}],
     active:id,
-    settings:{mirror:true, guide:true, zoom:1.6, recSec:4, unlockAll:false, teacher:false, facing:"user"},
+    settings:{mirror:true, guide:true, zoom:1.6, recSec:4, unlockAll:false, teacher:false,
+              facing:"user", voice:"kid1", useRef:true},
     records:[],
+    custom:[],
+    refs:{},
     medals:{}
   };
 }
@@ -520,7 +591,11 @@ function load(){
     db = JSON.parse(raw);
     if(!db || !db.learners || !db.learners.length) db = defaultDb();
     if(!db.medals) db.medals = {};
+    if(!db.refs) db.refs = {};
+    if(!Array.isArray(db.custom)) db.custom = [];
     if(!db.settings) db.settings = defaultDb().settings;
+    const ds = defaultDb().settings;
+    for(const k in ds){ if(db.settings[k]===undefined) db.settings[k]=ds[k]; }
   }catch(e){ db = defaultDb(); }
 }
 function save(){
@@ -616,22 +691,46 @@ let zoom = 1.6;
 /* ========================================================================
    5. レベル・おてほん表示
    ======================================================================== */
+/* きほんの 8レベル ＋ せんせいが つくった セット */
+function allLevels(){
+  const cs = (db.custom||[]).filter(c=>c.items && c.items.length).map(c=>({
+    n:"せんせい", t:c.name, hint:c.hint || "はっきり いって みよう",
+    items:c.items, custom:true, id:c.id
+  }));
+  return LEVELS.concat(cs);
+}
+function levelKey(li){
+  const L = allLevels()[li];
+  if(!L) return "";
+  return L.custom ? ("C:"+L.id) : ("L"+(li+1));
+}
 function levelCleared(li){
-  const rs = myRecords().filter(r=>r.level===li && r.score>=70);
+  const L = allLevels()[li];
+  if(!L || L.custom) return false;          // せんせいの セットは いつでも つかえる
+  const key = "L"+(li+1);
+  const rs = myRecords().filter(r=>{
+    const k = r.levelKey ? r.levelKey : ("L"+((r.level||0)+1));
+    return k===key && r.score>=70;
+  });
   return rs.length>=3;
 }
 function levelOpen(li){
+  const L = allLevels()[li];
+  if(L && L.custom) return true;
   if(db.settings.unlockAll) return true;
   if(li===0) return true;
   return levelCleared(li-1);
 }
 function renderChips(){
   const box = $("#levelChips"); box.innerHTML="";
-  LEVELS.forEach((L,i)=>{
+  const LS = allLevels();
+  if(curLevel >= LS.length) curLevel = 0;
+  LS.forEach((L,i)=>{
     const open = levelOpen(i);
     const b = document.createElement("button");
     b.className = "chip" + (i===curLevel?" on":"") + (open?"":" lock");
     b.innerHTML = '<span class="lv">'+L.n+(levelCleared(i)?" ★":"")+'</span>'+L.t;
+    if(L.custom) b.style.borderColor = i===curLevel ? "" : "#2FBF9B";
     b.addEventListener("click", ()=>{
       if(!open){ toast("まえの レベルで 70てん いじょうを 3かい とると ひらきます"); return; }
       curLevel=i; curIndex=0; renderChips(); renderModel(); hideResult();
@@ -640,32 +739,183 @@ function renderChips(){
   });
 }
 function renderModel(){
-  const L = LEVELS[curLevel];
+  const LS = allLevels();
+  if(curLevel >= LS.length) curLevel = 0;
+  const L = LS[curLevel];
   const w = L.items[curIndex % L.items.length];
   const kb = $("#kanaBox");
   kb.textContent = w;
   kb.className = "kana" + (w.length>=5 ? " xsmall" : (w.length>=3 ? " small" : ""));
   $("#mouthBox").innerHTML = mouthSvg(vowelOf(w));
   $("#hintTxt").textContent = L.hint;
+  const rf = getRef(w);
+  $("#refTxt").textContent = "この ことばの きじゅん：やく " + rf.sec.toFixed(1) + "びょう"
+    + (rf.est ? "（めやす・おてほんを きくと 正確になります）" : "（おてほんで そくてい ずみ）");
 }
 function curWord(){
-  const L = LEVELS[curLevel];
+  const LS = allLevels();
+  const L = LS[curLevel] || LS[0];
   return L.items[curIndex % L.items.length];
 }
 $("#btnNextWord").addEventListener("click", ()=>{
-  curIndex = (curIndex+1) % LEVELS[curLevel].items.length;
+  const L = allLevels()[curLevel] || LEVELS[0];
+  curIndex = (curIndex+1) % L.items.length;
   renderModel(); hideResult();
 });
-$("#btnSpeak").addEventListener("click", ()=>{
-  if(running){ toast("ろくおんちゅうは つかえません"); return; }
+$("#btnSpeak").addEventListener("click", ()=>{ playModel(); });
+
+async function playModel(){
+  if(running) return;
   if(!("speechSynthesis" in window)){ toast("この たんまつでは おてほんの こえは つかえません"); return; }
-  try{
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(curWord());
-    u.lang = "ja-JP"; u.rate = 0.72; u.pitch = 1.05;
-    speechSynthesis.speak(u);
-  }catch(e){ toast("おてほんの こえを 出せませんでした"); }
-});
+  const word = curWord();
+  if(!analyser || !db.settings.useRef){ speakWord(word); return; }
+
+  // おてほんの 音を マイクで はかり、この ことばの きじゅんに する
+  running = true; holdWave = false;
+  const prevPhase = phase;
+  setPhase("model","おてほんを ききます");
+  waveTrace=[]; drawWave(false);
+
+  let acc=0, cnt=0, t0=performance.now();
+  await new Promise(res=>{ (function l(){
+    if(performance.now()-t0>350) return res();
+    acc+=rms(); cnt++; requestAnimationFrame(l);
+  })(); });
+  const noise = cnt ? acc/cnt : 0.006;
+  const thr = clamp(noise*2.2, 0.006, 0.030);
+  waveThr = thr;
+
+  let done=false;
+  speakWord(word, ()=>{ done=true; });
+  const samples=[]; const s0=performance.now(); let endAt=0;
+  await new Promise(res=>{ (function l(){
+    const el = performance.now()-s0;
+    if(done && !endAt) endAt = el+400;
+    if((endAt && el>endAt) || el>10000) return res();
+    const v=rms(); samples.push(v);
+    waveTrace.push(v); if(waveTrace.length>140) waveTrace.shift();
+    drawWave(true);
+    requestAnimationFrame(l);
+  })(); });
+
+  running=false; holdWave=true; drawWave(false);
+  setPhase(prevPhase==="off"?"off":"ready", prevPhase==="off"?"まって います":"じゅんび OK");
+
+  const el = performance.now()-s0;
+  const dt = samples.length ? el/samples.length/1000 : 0.016;
+  const voiced = samples.filter(v=>v>thr).length;
+  const sec = voiced*dt;
+  const seg = countSegments(samples, thr, Math.max(3, Math.round(0.09/dt)));
+  if(sec>=0.15){
+    db.refs[word] = {sec:+sec.toFixed(2), seg:seg, ts:Date.now()};
+    save(); renderModel();
+    toast("おてほんを おぼえました（やく "+sec.toFixed(1)+"びょう）");
+  }else{
+    toast("おてほんの 音を ひろえませんでした。スピーカーの 音を 大きくして ください");
+  }
+}
+
+/* ========================================================================
+   5-2. おてほんの こえ（音声合成）
+   ======================================================================== */
+const VOICES = {
+  kid1 :{nm:"小学校 ていがくねん", rate:0.60, pitch:1.55, g:"f"},
+  kid2 :{nm:"小学校 こうがくねん", rate:0.70, pitch:1.28, g:"f"},
+  man  :{nm:"おとな（男）",         rate:0.75, pitch:0.80, g:"m"},
+  woman:{nm:"おとな（女）",         rate:0.75, pitch:1.05, g:"f"}
+};
+const MALE_RE   = /otoya|hattori|ichiro|daichi|keita|takumi|男|male/i;
+const FEMALE_RE = /kyoko|o-?ren|mizuki|nanami|haruka|ayumi|sayaka|tomoko|女|female/i;
+let voiceList = [];
+function loadVoices(){
+  if(!("speechSynthesis" in window)) return;
+  try{ voiceList = speechSynthesis.getVoices().filter(v=>/^ja/i.test(v.lang)); }
+  catch(e){ voiceList = []; }
+}
+function pickVoice(g){
+  if(!voiceList.length) return null;
+  if(g==="m"){
+    const m = voiceList.filter(v=>MALE_RE.test(v.name));
+    if(m.length) return m[0];
+    const notF = voiceList.filter(v=>!FEMALE_RE.test(v.name));
+    return notF[0] || voiceList[0];
+  }
+  const f = voiceList.filter(v=>FEMALE_RE.test(v.name));
+  return f[0] || voiceList[0];
+}
+function voicePreset(){ return VOICES[(db && db.settings.voice) || "kid1"] || VOICES.kid1; }
+
+/* さいしょの 1もじが 切れる ふぐあい対策：
+   ①cancel の あと 少し まつ ②音量0の 前置きで 音声エンジンを 起こす
+   ③本文の 前に 読点を 入れて 出だしに 余白を つくる */
+function speakWord(text, onend){
+  const S = window.speechSynthesis;
+  if(!S){ if(onend) onend(); return false; }
+  const p = voicePreset();
+  try{ S.cancel(); }catch(e){}
+  setTimeout(function(){
+    try{
+      const warm = new SpeechSynthesisUtterance("　");
+      warm.lang="ja-JP"; warm.volume=0; warm.rate=1;
+      S.speak(warm);
+    }catch(e){}
+    let u;
+    try{
+      u = new SpeechSynthesisUtterance("、" + text);
+      u.lang="ja-JP"; u.rate=p.rate; u.pitch=p.pitch; u.volume=1;
+      const v = pickVoice(p.g); if(v) u.voice = v;
+      if(onend){
+        u.onend = onend;
+        u.onerror = onend;
+        setTimeout(function(){ if(onend){ const f=onend; onend=null; f(); } }, 9000);
+      }
+      S.speak(u);
+    }catch(e){ if(onend) onend(); }
+  }, 180);
+  return true;
+}
+function updateVoiceNote(){
+  const el = $("#voiceNote"); if(!el || !db) return;
+  if(!("speechSynthesis" in window)){ el.textContent="この たんまつでは 音声合成が つかえません。"; return; }
+  const p = voicePreset();
+  const v = pickVoice(p.g);
+  el.textContent = "いまの せってい：" + p.nm
+    + "／つかう こえ：" + (v ? v.name : "日本語の こえが 見つかりません（はやさと 高さだけ かえます）");
+}
+if("speechSynthesis" in window){
+  loadVoices();
+  try{ speechSynthesis.onvoiceschanged = function(){ loadVoices(); updateVoiceNote(); }; }catch(e){}
+}
+
+/* ---- 課題の長さの きじゅん ---- */
+function moraCount(w){
+  let n=0;
+  for(let i=0;i<w.length;i++){
+    const c=w[i];
+    if("ゃゅょぁぃぅぇぉゎ".indexOf(c)>=0) continue;
+    if(c===" " || c==="　") continue;
+    n++;
+  }
+  return Math.max(1,n);
+}
+function getRef(word){
+  const r = db.refs && db.refs[word];
+  if(r && r.sec) return {sec:r.sec, seg:r.seg||1, est:false};
+  return {sec:+(moraCount(word)*0.45).toFixed(2), seg:1, est:true};
+}
+function countSegments(samples, thr, gapFrames){
+  let segs=0, inSeg=false, gap=0;
+  for(let i=0;i<samples.length;i++){
+    if(samples[i]>thr){
+      if(!inSeg){ segs++; inSeg=true; }
+      gap=0;
+    }else if(inSeg){
+      gap++;
+      if(gap>=gapFrames) inSeg=false;
+    }
+  }
+  return Math.max(segs,0);
+}
 
 /* ========================================================================
    6. カメラ・マイク
@@ -845,7 +1095,6 @@ function startMeter(){
     const v = rms();
     waveTrace.push(v);
     if(waveTrace.length>140) waveTrace.shift();
-    $("#lvlTxt").textContent = Math.round(clamp(v/LOUD_FULL,0,1)*100);
     drawWave(true);
   })();
 }
@@ -1007,10 +1256,13 @@ async function runAttempt(){
   ct.style.display="none";
   if(abortFlag) return;
 
-  // ろくおん
+  // ろくおん（課題が 長い ときは 録音時間を のばす）
   running=true;
   setPhase("rec","こえを 出して！");
-  const dur = db.settings.recSec*1000;
+  const word = curWord();
+  const ref  = getRef(word);
+  const secs = clamp(Math.max(db.settings.recSec, Math.ceil(ref.sec*1.8+0.6)), 3, 12);
+  const dur  = secs*1000;
   const t0 = performance.now();
   const samples=[];
   await new Promise(res=>{
@@ -1022,7 +1274,6 @@ async function runAttempt(){
       samples.push(v);
       waveTrace.push(v);
       if(waveTrace.length>140) waveTrace.shift();
-      $("#lvlTxt").textContent = Math.round(clamp(v/LOUD_FULL,0,1)*100);
       drawWave(true);
       requestAnimationFrame(loop);
     })();
@@ -1036,18 +1287,21 @@ async function runAttempt(){
   $("#btnGo").textContent="はじめる";
   $("#btnGo").classList.remove("stop");
 
-  pending = analyze(samples, thr);
+  pending = analyze(samples, thr, performance.now()-t0, word);
   showResult();
 }
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
 /* ---- 自動採点 ---- */
-function analyze(samples, thr){
+function analyze(samples, thr, elapsedMs, word){
+  const ref = getRef(word);
   if(!analyser || !samples.length){
-    return {loud:0, dur:0, stab:0, onset:0, auto:false, raw:{}};
+    return {loud:0, dur:0, stab:0, onset:0, auto:false, sec:0, segs:0, ref:ref, raw:{}};
   }
+  const dt = elapsedMs/samples.length/1000;          // 1サンプルあたりの 秒数
   const voiced = samples.filter(v=>v>thr);
   const ratio = voiced.length / samples.length;
+  const sec = voiced.length * dt;                    // 実さいに 声が 出ていた 秒数
   const mean = voiced.length ? voiced.reduce((a,b)=>a+b,0)/voiced.length : 0;
   let sd=0;
   if(voiced.length>1){
@@ -1059,13 +1313,30 @@ function analyze(samples, thr){
   for(let i=0;i<samples.length;i++){ if(samples[i]>thr){ first=i; break; } }
   const onsetR = first<0 ? 1 : first/samples.length;
   const onset = Math.round(clamp((0.75-onsetR)/(0.75-0.15),0,1)*100);
+
   const loud = Math.round(clamp((mean-thr)/(LOUD_FULL-thr),0,1)*100);
-  const durS = Math.round(clamp(ratio/0.55,0,1)*100);
-  const cv = mean>0 ? sd/mean : 1;
-  const stab = voiced.length<3 ? 0 : Math.round(clamp(1-(cv-0.15)/0.75,0,1)*100);
+
+  // ながさ：おてほん（＝課題の 文字数・語の長さ）と くらべる
+  const r = ref.sec>0 ? sec/ref.sec : 0;
+  let durS;
+  if(r>=0.75 && r<=1.80)  durS = 100;
+  else if(r<0.75)         durS = Math.round(clamp(r/0.75,0,1)*100);
+  else                    durS = Math.round(clamp(100-(r-1.80)*45, 35, 100));
+
+  // あんてい：音量の ばらつき ＋ 区切りの 数が おてほんと 合っているか
+  const gapF   = Math.max(3, Math.round(0.09/dt));
+  const segs   = countSegments(samples, thr, gapF);
+  const cv     = mean>0 ? sd/mean : 1;
+  const cvS    = Math.round(clamp(1-(cv-0.15)/0.75,0,1)*100);
+  const segDif = Math.abs(segs - ref.seg);
+  const segS   = segDif===0 ? 100 : (segDif===1 ? 75 : 50);
+  const stab   = voiced.length<3 ? 0 : Math.round(cvS*0.6 + segS*0.4);
+
   return {loud:loud, dur:durS, stab:stab, onset:onset, auto:true,
+          sec:+sec.toFixed(2), segs:segs, ref:ref,
           raw:{mean:+mean.toFixed(4), ratio:+ratio.toFixed(3), thr:+thr.toFixed(4),
-               onset:+onsetR.toFixed(2), sec:db.settings.recSec}};
+               onset:+onsetR.toFixed(2), sec:+sec.toFixed(2),
+               ref:ref.sec, segs:segs, refseg:ref.seg}};
 }
 
 function todayCount(){
@@ -1122,9 +1393,15 @@ function showResult(){
   ).join("");
   if(!a.auto){
     box.innerHTML = '<p class="sub">マイクが つかえないため、じどう そくていは ありません。</p>';
-  }else if(db.settings.teacher){
-    box.innerHTML += '<p class="sub" id="rawLine" style="margin-top:8px">平均音量 '+a.raw.mean
-      +' ／ 発声時間比 '+a.raw.ratio+' ／ 閾値 '+a.raw.thr+' ／ 発声開始 '+a.raw.onset+'</p>';
+  }else{
+    box.innerHTML += '<p class="sub" style="margin-top:8px">おてほん やく '+a.ref.sec.toFixed(1)+'びょう'
+      + (a.ref.est ? "（めやす）" : "")
+      + ' ／ きみの こえ やく '+a.sec.toFixed(1)+'びょう</p>';
+    if(db.settings.teacher){
+      box.innerHTML += '<p class="sub" id="rawLine" style="margin-top:4px">平均音量 '+a.raw.mean
+        +' ／ 発声時間比 '+a.raw.ratio+' ／ 閾値 '+a.raw.thr+' ／ 発声開始 '+a.raw.onset
+        +' ／ 区切り '+a.raw.segs+'（手本 '+a.raw.refseg+'）</p>';
+    }
   }
   updatePreview();
   $("#resultCard").style.display="block";
@@ -1165,8 +1442,11 @@ $("#btnSave").addEventListener("click", ()=>{
   const before = totals();
   const rec = {
     id: uid(), learner: db.active, ts: Date.now(), date: ymd(Date.now()),
-    level: curLevel, levelName: LEVELS[curLevel].n, item: curWord(),
+    level: curLevel, levelKey: levelKey(curLevel),
+    levelName: (allLevels()[curLevel].custom ? ("せんせい／"+allLevels()[curLevel].t) : allLevels()[curLevel].n),
+    item: curWord(),
     loud: pending.loud, dur: pending.dur, stab: pending.stab, onset: pending.onset,
+    sec: pending.sec, refSec: (pending.ref?pending.ref.sec:0),
     mouth: selMouth, listened: listened, axes: ax, score: score
   };
   db.records.push(rec);
@@ -1180,7 +1460,8 @@ $("#btnSave").addEventListener("click", ()=>{
     toast(score+"てん！ るいけい "+after.total+"てん");
   }
   // つぎの ことばへ
-  curIndex = (curIndex+1) % LEVELS[curLevel].items.length;
+  const LN = allLevels()[curLevel] || LEVELS[0];
+  curIndex = (curIndex+1) % LN.items.length;
   renderModel();
 });
 
@@ -1421,6 +1702,15 @@ bindSwitch("#swMirror","mirror", applyVideoStyle);
 bindSwitch("#swGuide","guide", applyVideoStyle);
 bindSwitch("#swUnlock","unlockAll", renderChips);
 bindSwitch("#swTeacher","teacher");
+bindSwitch("#swUseRef","useRef");
+
+$$("#voiceSeg button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    db.settings.voice = b.dataset.v; save(); syncSettings();
+    speakWord("あいうえお");
+  });
+});
+$("#btnVoiceTest").addEventListener("click", ()=>{ speakWord(curWord()); });
 
 $("#zoomRange").addEventListener("input", e=>{
   zoom = parseInt(e.target.value,10)/100;
@@ -1436,6 +1726,9 @@ function syncSettings(){
   $("#swGuide").classList.toggle("on", !!db.settings.guide);
   $("#swUnlock").classList.toggle("on", !!db.settings.unlockAll);
   $("#swTeacher").classList.toggle("on", !!db.settings.teacher);
+  $("#swUseRef").classList.toggle("on", !!db.settings.useRef);
+  $$("#voiceSeg button").forEach(b=>b.classList.toggle("on", b.dataset.v===db.settings.voice));
+  updateVoiceNote();
   $("#zoomRange").value = Math.round(db.settings.zoom*100);
   $("#zoomLbl").textContent = Number(db.settings.zoom).toFixed(1)+" ばい";
   $$("#secSeg button").forEach(b=>b.classList.toggle("on", parseInt(b.dataset.s,10)===db.settings.recSec));
@@ -1452,7 +1745,7 @@ function download(name, text, mime){
 $("#btnCsv").addEventListener("click", ()=>{
   const head = ["日付","時刻","なまえ","レベル","ことば","得点",
     "健康の保持","心理的な安定","人間関係の形成","環境の把握","身体の動き","コミュニケーション",
-    "音量","発声時間","安定","立ち上がり","口形自己評価","聞いてもらった"];
+    "音量","発声時間","安定","立ち上がり","発声秒数","手本秒数","口形自己評価","聞いてもらった"];
   const lines = [head.join(",")];
   myRecords().forEach(r=>{
     const d=new Date(r.ts);
@@ -1460,7 +1753,9 @@ $("#btnCsv").addEventListener("click", ()=>{
     const a=r.axes||{};
     lines.push([r.date,hm,activeName(),r.levelName||"",r.item,r.score,
       a.kenko,a.shinri,a.ningen,a.kankyo,a.shintai,a.comm,
-      r.loud,r.dur,r.stab,(r.onset===undefined?"":r.onset),r.mouth,r.listened?1:0].join(","));
+      r.loud,r.dur,r.stab,(r.onset===undefined?"":r.onset),
+      (r.sec===undefined?"":r.sec),(r.refSec===undefined?"":r.refSec),
+      r.mouth,r.listened?1:0].join(","));
   });
   download("hatsuwa_"+activeName()+"_"+ymd(Date.now())+".csv", "\uFEFF"+lines.join("\r\n"), "text/csv;charset=utf-8");
   toast("CSVを 書き出しました");
@@ -1483,6 +1778,8 @@ $("#fileIn").addEventListener("change", e=>{
       let n=0;
       inc.records.forEach(r=>{ if(!have.has(r.id)){ db.records.push(r); n++; } });
       Object.assign(db.medals, inc.medals||{});
+      Object.assign(db.refs, inc.refs||{});
+      (inc.custom||[]).forEach(c=>{ if(!db.custom.some(x=>x.id===c.id)) db.custom.push(c); });
       save(); syncAll();
       toast(n+"けんの きろくを よみこみました");
     }catch(err){ toast("よみこめませんでした（ファイルの けいしきが ちがいます）"); }
@@ -1496,6 +1793,174 @@ $("#btnClear").addEventListener("click", ()=>{
   Object.keys(db.medals).forEach(k=>{ if(k.indexOf(db.active+"::")===0) delete db.medals[k]; });
   save(); syncAll(); toast("けしました");
 });
+
+/* ========================================================================
+   12-2. せんせいの ことば（作成・くばる）
+   ======================================================================== */
+let editSetId = null;
+
+function renderSetList(){
+  const box = $("#setList"); if(!box) return;
+  const cs = db.custom || [];
+  if(!cs.length){
+    box.innerHTML = '<p class="sub" style="margin:0">まだ ありません。下の らんに 入力して「ほぞんする」を おしてください。</p>';
+    return;
+  }
+  box.innerHTML = "";
+  cs.forEach(c=>{
+    const row = document.createElement("div");
+    row.className = "setrow";
+    row.innerHTML = '<div class="nm">'+esc(c.name)+'（'+c.items.length+'ご）<span>'+esc(c.items.slice(0,6).join("・"))+'</span></div>';
+    const e = document.createElement("button");
+    e.className="mini"; e.textContent="なおす";
+    e.addEventListener("click", ()=>{
+      editSetId = c.id;
+      $("#setName").value = c.name;
+      $("#setHint").value = c.hint || "";
+      $("#setItems").value = c.items.join("\n");
+      $("#btnSetSave").textContent = "この セットを 上書き";
+      $("#setName").scrollIntoView({behavior:"smooth", block:"center"});
+    });
+    const d = document.createElement("button");
+    d.className="mini danger"; d.textContent="けす";
+    d.addEventListener("click", ()=>{
+      if(!confirm("「"+c.name+"」を けしますか？")) return;
+      db.custom = db.custom.filter(x=>x.id!==c.id);
+      if(editSetId===c.id) clearSetForm();
+      save(); renderSetList(); renderChips(); renderModel();
+    });
+    row.appendChild(e); row.appendChild(d);
+    box.appendChild(row);
+  });
+}
+function esc(t){
+  return String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+function clearSetForm(){
+  editSetId = null;
+  $("#setName").value=""; $("#setHint").value=""; $("#setItems").value="";
+  $("#btnSetSave").textContent = "ほぞんする";
+}
+$("#btnSetNew").addEventListener("click", clearSetForm);
+$("#btnSetSave").addEventListener("click", ()=>{
+  const name = $("#setName").value.trim();
+  const hint = $("#setHint").value.trim();
+  const items = $("#setItems").value.split("\n")
+    .map(x=>x.replace(/\s+$/,"").replace(/^\s+/,""))
+    .filter(x=>x.length>0).slice(0,80);
+  if(!name){ toast("セットの なまえを 入れてください"); return; }
+  if(!items.length){ toast("ことばを 1つ いじょう 入れてください"); return; }
+  if(editSetId){
+    const c = db.custom.find(x=>x.id===editSetId);
+    if(c){ c.name=name; c.hint=hint; c.items=items; }
+  }else{
+    db.custom.push({id:uid(), name:name, hint:hint, items:items});
+  }
+  save(); clearSetForm(); renderSetList(); renderChips(); renderModel();
+  toast("ほぞんしました（レベルの 右はしに ならびます）");
+});
+
+/* ---- くばる（リンク／コード） ---- */
+function encodeSets(sets){
+  const json = JSON.stringify(sets);
+  let bin = "";
+  if(window.TextEncoder){
+    const by = new TextEncoder().encode(json);
+    for(let i=0;i<by.length;i++) bin += String.fromCharCode(by[i]);
+  }else{
+    bin = unescape(encodeURIComponent(json));
+  }
+  return btoa(bin).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+function decodeSets(code){
+  let b = code.replace(/-/g,"+").replace(/_/g,"/");
+  while(b.length%4) b += "=";
+  const bin = atob(b);
+  let json;
+  if(window.TextDecoder){
+    const by = new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) by[i]=bin.charCodeAt(i);
+    json = new TextDecoder().decode(by);
+  }else{
+    json = decodeURIComponent(escape(bin));
+  }
+  const v = JSON.parse(json);
+  if(!Array.isArray(v)) throw new Error("format");
+  return v.filter(c=>c && c.name && Array.isArray(c.items) && c.items.length)
+          .map(c=>({id:c.id||uid(), name:String(c.name).slice(0,20),
+                    hint:String(c.hint||"").slice(0,34),
+                    items:c.items.map(x=>String(x).slice(0,40)).slice(0,80)}));
+}
+function shareUrl(){
+  return location.origin + location.pathname + "#set=" + encodeSets(db.custom||[]);
+}
+function putShare(text, label){
+  const box = $("#shareBox");
+  box.value = text;
+  box.focus(); box.select();
+  let done = false;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(()=>toast(label+"を コピーしました")).catch(()=>{
+      toast(label+"を つくりました。長おしして コピーしてください");
+    });
+    done = true;
+  }
+  if(!done){
+    try{ document.execCommand("copy"); toast(label+"を コピーしました"); }
+    catch(e){ toast(label+"を つくりました。長おしして コピーしてください"); }
+  }
+}
+$("#btnShareLink").addEventListener("click", ()=>{
+  if(!(db.custom||[]).length){ toast("くばる ことばが ありません"); return; }
+  putShare(shareUrl(), "リンク");
+});
+$("#btnShareCode").addEventListener("click", ()=>{
+  if(!(db.custom||[]).length){ toast("くばる ことばが ありません"); return; }
+  putShare(encodeSets(db.custom), "コード");
+});
+$("#btnReadCode").addEventListener("click", ()=>{
+  const raw = $("#shareBox").value.trim();
+  if(!raw){ toast("リンクか コードを はりつけてください"); return; }
+  const m = raw.match(/set=([A-Za-z0-9\-_]+)/);
+  const code = m ? m[1] : raw.replace(/\s+/g,"");
+  try{
+    const sets = decodeSets(code);
+    if(!sets.length) throw new Error("empty");
+    askImport(sets);
+  }catch(e){ toast("読みこめませんでした。リンクか コードを かくにんしてください"); }
+});
+
+function importSets(sets){
+  let add=0, upd=0;
+  sets.forEach(c=>{
+    const i = db.custom.findIndex(x=>x.id===c.id);
+    if(i>=0){ db.custom[i]=c; upd++; } else { db.custom.push(c); add++; }
+  });
+  save(); renderSetList(); renderChips(); renderModel();
+  toast("ことばを ついか "+add+"・こうしん "+upd+" しました");
+}
+function askImport(sets){
+  const total = sets.reduce((s,c)=>s+c.items.length,0);
+  const names = sets.map(c=>"・"+esc(c.name)+"（"+c.items.length+"ご）").join("<br>");
+  modal('<div style="font-size:38px">📮</div><h3>ことばが とどきました</h3>'
+    +'<p style="text-align:left">'+names+'<br><br>あわせて '+total+'この ことばを ついかします。'
+    +'いままでの きろくは そのままです。</p>'
+    +'<button class="go" id="imOk">ついかする</button>'
+    +'<div style="height:8px"></div><button class="go ghost" id="imNg">やめる</button>');
+  $("#imOk").addEventListener("click", ()=>{ closeModal(); importSets(sets); });
+  $("#imNg").addEventListener("click", closeModal);
+}
+/* リンクで ひらいた ときは 自動で たずねる */
+function checkHashImport(){
+  const m = (location.hash||"").match(/set=([A-Za-z0-9\-_]+)/);
+  if(!m) return;
+  try{
+    const sets = decodeSets(m[1]);
+    if(sets.length) askImport(sets);
+  }catch(e){ toast("リンクの ことばを 読みこめませんでした"); }
+  try{ history.replaceState(null, "", location.pathname + location.search); }
+  catch(e){ location.hash = ""; }
+}
 
 /* ---- マイク診断 ---- */
 let diagPerm = "―", diagDev = "―";
@@ -1552,8 +2017,9 @@ $("#btnDiag").addEventListener("click", async ()=>{
 function showPage(id){
   $$(".page").forEach(p=>p.classList.toggle("on", p.id===id));
   $$(".tabbar button").forEach(b=>b.classList.toggle("on", b.dataset.p===id));
+  document.body.classList.toggle("practice", id==="pgPractice");
   if(id==="pgRecords") renderRecords();
-  if(id==="pgSettings"){ renderLearners(); syncSettings(); renderDiag(); probeEnv().then(()=>renderDiag()); }
+  if(id==="pgSettings"){ renderLearners(); syncSettings(); renderSetList(); renderDiag(); probeEnv().then(()=>renderDiag()); }
   window.scrollTo(0,0);
 }
 $$(".tabbar button").forEach(b=> b.addEventListener("click", ()=>showPage(b.dataset.p)) );
@@ -1564,11 +2030,13 @@ $$(".tabbar button").forEach(b=> b.addEventListener("click", ()=>showPage(b.data
 function syncAll(){
   $("#whoName").textContent = activeName();
   zoom = db.settings.zoom || 1.6;
-  renderChips(); renderModel(); syncSettings(); renderLearners(); renderRecords(); applyVideoStyle();
+  renderChips(); renderModel(); syncSettings(); renderLearners(); renderSetList(); renderRecords(); applyVideoStyle();
+  document.body.classList.toggle("practice", $("#pgPractice").classList.contains("on"));
 }
 load();
 syncAll();
 drawWave(false);
+checkHashImport();
 
 window.addEventListener("resize", ()=>{
   drawWave(false);
