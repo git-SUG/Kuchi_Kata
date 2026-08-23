@@ -762,6 +762,7 @@ $("#btnSpeak").addEventListener("click", ()=>{ playModel(); });
 
 async function playModel(){
   if(running) return;
+  ensureAudioCtx();
   if(!("speechSynthesis" in window)){ toast("この たんまつでは おてほんの こえは つかえません"); return; }
   const word = curWord();
   if(!analyser || !db.settings.useRef){ speakWord(word); return; }
@@ -772,147 +773,48 @@ async function playModel(){
   setPhase("model","おてほんを ききます");
   waveTrace=[]; drawWave(false);
 
-  let acc=0, cnt=0, t0=performance.now();
-  await new Promise(res=>{ (function l(){
-    if(performance.now()-t0>350) return res();
-    acc+=rms(); cnt++; requestAnimationFrame(l);
-  })(); });
-  const noise = cnt ? acc/cnt : 0.006;
+  let noise = 0.006;
+  const n0 = await sampleFor(350, {});
+  if(n0.samples.length) noise = n0.samples.reduce((a,b)=>a+b,0)/n0.samples.length;
   const thr = clamp(noise*2.2, 0.006, 0.030);
   waveThr = thr;
 
-  let done=false;
-  speakWord(word, ()=>{ done=true; });
-  const samples=[]; const s0=performance.now(); let endAt=0;
-  await new Promise(res=>{ (function l(){
-    const el = performance.now()-s0;
-    if(done && !endAt) endAt = el+400;
-    if((endAt && el>endAt) || el>10000) return res();
-    const v=rms(); samples.push(v);
-    waveTrace.push(v); if(waveTrace.length>140) waveTrace.shift();
-    drawWave(true);
-    requestAnimationFrame(l);
-  })(); });
-
+  let done = false;
+  const mark = {endAt:0};
+  speakWord(word, function(){ done = true; });
+  // 読み上げが おわるまで（さいだい 10びょう）はかる
+  const got = await sampleFor(10000, {draw:true, stop:function(){
+    if(!done) return false;
+    if(!mark.endAt) mark.endAt = performance.now()+400;
+    return performance.now() > mark.endAt;
+  }});
   running=false; holdWave=true; drawWave(false);
   setPhase(prevPhase==="off"?"off":"ready", prevPhase==="off"?"まって います":"じゅんび OK");
 
-  const el = performance.now()-s0;
-  const dt = samples.length ? el/samples.length/1000 : 0.016;
+  const samples = got.samples;
+  const dt = samples.length ? got.elapsed/samples.length/1000 : 0.02;
   const voiced = samples.filter(v=>v>thr).length;
   const sec = voiced*dt;
   const seg = countSegments(samples, thr, Math.max(3, Math.round(0.09/dt)));
+  const peak = samples.length ? Math.max.apply(null, samples) : 0;
+
   if(sec>=0.15){
     db.refs[word] = {sec:+sec.toFixed(2), seg:seg, ts:Date.now()};
     save(); renderModel();
     toast("おてほんを おぼえました（やく "+sec.toFixed(1)+"びょう）");
+  }else if(peak < 0.004){
+    warnNoSound();
   }else{
-    toast("おてほんの 音を ひろえませんでした。スピーカーの 音を 大きくして ください");
+    modal('<div style="font-size:38px">🔉</div><h3>おてほんの 音が 小さいです</h3>'
+      +'<p style="text-align:left">ひろえた さいだい音量：'+Math.round(peak*1000)
+      +'（40いじょう ひつよう）<br><br>'
+      +'・スピーカーから 音が 出ているか（イヤホンだと はかれません）<br>'
+      +'・端末を 口もとに 近づける<br>'
+      +'・はかれない ときは「せってい」→「おてほんの 波形で 長さの きじゅんを つくる」を オフにすると、'
+      +'文字数からの めやすで はんていします</p>'
+      +'<button class="go" id="lvOk">とじる</button>');
+    const b=$("#lvOk"); if(b) b.addEventListener("click", closeModal);
   }
-}
-
-/* ========================================================================
-   5-2. おてほんの こえ（音声合成）
-   ======================================================================== */
-let voiceList = [];
-function loadVoices(){
-  if(!("speechSynthesis" in window)) return;
-  try{ voiceList = speechSynthesis.getVoices().filter(v=>/^ja/i.test(v.lang)); }
-  catch(e){ voiceList = []; }
-}
-/* しぜんな 音声：
-   ネットワーク経由の 音声（localService=false）は 機械的でない なめらかな こえ。
-   オフラインの ときや 見つからない ときは 端末内の 音声に もどす。 */
-function isOnline(){ return navigator.onLine !== false; }
-function wantNatural(){ return !!(db && db.settings.natural) && isOnline(); }
-function pickVoice(){
-  if(!voiceList.length) return null;
-  const remote = voiceList.filter(v=>v.localService===false);
-  const local  = voiceList.filter(v=>v.localService!==false);
-  if(wantNatural() && remote.length) return remote[0];
-  const nice = local.filter(v=>/premium|enhanced|neural|natural|siri|google/i.test(v.name));
-  return nice[0] || local[0] || voiceList[0];
-}
-
-/* さいしょの 1もじが 切れる ふぐあい対策：
-   ①cancel の あと 少し まつ ②音量0の 前置きで 音声エンジンを 起こす
-   ③本文の 前に 読点を 入れて 出だしに 余白を つくる */
-function speakWord(text, onend){
-  const S = window.speechSynthesis;
-  if(!S){ if(onend) onend(); return false; }
-  try{ S.cancel(); }catch(e){}
-  setTimeout(function(){
-    try{
-      const warm = new SpeechSynthesisUtterance("\u3000");
-      warm.lang="ja-JP"; warm.volume=0; warm.rate=1;
-      S.speak(warm);
-    }catch(e){}
-    let u;
-    try{
-      u = new SpeechSynthesisUtterance("、" + text);
-      const v = pickVoice();
-      if(v) u.voice = v;
-      const natural = !!(v && v.localService===false);
-      u.lang  = "ja-JP";
-      u.pitch = 1.0;                        // しぜんな 音声は 高さを いじらない ほうが なめらか
-      u.rate  = natural ? 0.85 : 0.75;      // 端末内の 音声は ゆっくりの ほうが 聞きとりやすい
-      u.volume= 1;
-      if(onend){
-        u.onend = onend;
-        u.onerror = onend;
-        setTimeout(function(){ if(onend){ const f=onend; onend=null; f(); } }, 9000);
-      }
-      S.speak(u);
-    }catch(e){ if(onend) onend(); }
-  }, 180);
-  return true;
-}
-function updateVoiceNote(){
-  const el = $("#voiceNote"); if(!el || !db) return;
-  if(!("speechSynthesis" in window)){ el.textContent="この たんまつでは 音声合成が つかえません。"; return; }
-  const v = pickVoice();
-  if(!v){ el.textContent="日本語の こえが 見つかりません。よみこみ中の ことも あります。"; return; }
-  const natural = v.localService===false;
-  el.textContent = "いま つかう こえ：" + v.name
-    + "（" + (natural ? "しぜんな 音声・オンライン" : "たんまつ内の 音声") + "）"
-    + (db.settings.natural && !natural
-        ? (isOnline() ? "　※しぜんな 音声が 見つからないため たんまつ内の 音声を つかいます"
-                      : "　※オフラインのため たんまつ内の 音声を つかいます")
-        : "");
-}
-if("speechSynthesis" in window){
-  loadVoices();
-  try{ speechSynthesis.onvoiceschanged = function(){ loadVoices(); updateVoiceNote(); }; }catch(e){}
-}
-
-/* ---- 課題の長さの きじゅん ---- */
-function moraCount(w){
-  let n=0;
-  for(let i=0;i<w.length;i++){
-    const c=w[i];
-    if("ゃゅょぁぃぅぇぉゎ".indexOf(c)>=0) continue;
-    if(c===" " || c==="　") continue;
-    n++;
-  }
-  return Math.max(1,n);
-}
-function getRef(word){
-  const r = db.refs && db.refs[word];
-  if(r && r.sec) return {sec:r.sec, seg:r.seg||1, est:false};
-  return {sec:+(moraCount(word)*0.45).toFixed(2), seg:1, est:true};
-}
-function countSegments(samples, thr, gapFrames){
-  let segs=0, inSeg=false, gap=0;
-  for(let i=0;i<samples.length;i++){
-    if(samples[i]>thr){
-      if(!inSeg){ segs++; inSeg=true; }
-      gap=0;
-    }else if(inSeg){
-      gap++;
-      if(gap>=gapFrames) inSeg=false;
-    }
-  }
-  return Math.max(segs,0);
 }
 
 /* ========================================================================
@@ -1023,13 +925,40 @@ async function startMic(){
   return false;
 }
 
+/* AudioContext は「操作の直後」でないと 再開できない ブラウザが あるため、
+   ボタンを おした その場で 同期的に 起こす */
+function ensureAudioCtx(){
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if(!AC) return null;
+  try{
+    if(!audioCtx || audioCtx.state==="closed") audioCtx = new AC();
+    if(audioCtx.state === "suspended"){
+      audioCtx.resume().then(function(){ updateCtxState(); }).catch(function(e){
+        console.warn("[audio] resume failed:", e);
+      });
+    }
+  }catch(e){ console.warn("[audio] ctx failed:", e); }
+  return audioCtx;
+}
+function updateCtxState(){
+  if(!analyser) return;
+  if(audioCtx && audioCtx.state!=="running"){
+    setMic("マイク：とまっています（画面を タップ）", false);
+  }else{
+    setMic("マイク：OK", true);
+  }
+}
+/* 画面の どこを さわっても 音声処理を 起こしなおす */
+document.addEventListener("pointerdown", function(){
+  if(audioCtx && audioCtx.state==="suspended"){ ensureAudioCtx(); }
+}, true);
+
 /* 解析ノードを つくる */
 function attachAnalyser(src){
   try{
     const AC = window.AudioContext || window.webkitAudioContext;
     if(!AC){ throw new Error("no AudioContext"); }
-    if(!audioCtx || audioCtx.state==="closed") audioCtx = new AC();
-    if(audioCtx.state === "suspended"){ audioCtx.resume().catch(function(){}); }
+    ensureAudioCtx();
     if(srcNode){ try{ srcNode.disconnect(); }catch(e){} }
     srcNode  = audioCtx.createMediaStreamSource(src);
     analyser = audioCtx.createAnalyser();
@@ -1046,8 +975,8 @@ function attachAnalyser(src){
     }
     try{ analyser.connect(silentGain); }catch(e){}
     lastMicErr = "";
-    setMic("マイク：OK", true);
     $("#btnMic").style.display="none";
+    updateCtxState();
     startMeter();
     return true;
   }catch(e){
@@ -1084,9 +1013,11 @@ function rms(){
 function startMeter(){
   if(meterOn) return;
   meterOn = true;
+  let tick = 0;
   (function loop(){
     if(!meterOn) return;
     requestAnimationFrame(loop);
+    if(++tick % 45 === 0) updateCtxState();   // 音声処理が 止まっていないか みはる
     if(running || holdWave) return;           // 録音中・結果表示中は上書きしない
     if(document.hidden) return;
     if(!$("#pgPractice").classList.contains("on")) return;
@@ -1189,6 +1120,7 @@ function hideResult(){
 }
 
 $("#btnGo").addEventListener("click", async ()=>{
+  ensureAudioCtx();                    // 操作の 直後に 音声処理を 起こす
   if(phase==="off"){
     $("#btnGo").disabled = true;
     const ok = await startCam();
@@ -1214,25 +1146,29 @@ function abortAttempt(){
 }
 
 async function runAttempt(){
+  try{ await runAttemptInner(); }
+  catch(err){
+    console.error("[practice]", err);
+    running=false; holdWave=false;
+    setPhase("ready","じゅんび OK");
+    $("#btnGo").textContent="はじめる";
+    $("#btnGo").classList.remove("stop");
+    $("#countTxt").style.display="none";
+    toast("エラーが おきました："+(err && err.message ? err.message : err));
+  }
+}
+async function runAttemptInner(){
   hideResult();
   abortFlag=false;
   waveTrace=[]; drawWave(false);
-  if(audioCtx && audioCtx.state==="suspended"){ try{ await audioCtx.resume(); }catch(e){} }
-  if(!analyser) await startMic();   // 取りこぼしていたら つなぎ直す
+  ensureAudioCtx();
+  if(!analyser) await startMic();
 
   // ノイズフロア計測
   let noise = 0.006;
   if(analyser){
-    let acc=0,cnt=0;
-    const t0=performance.now();
-    await new Promise(res=>{
-      (function loop(){
-        if(performance.now()-t0>450) return res();
-        acc+=rms(); cnt++;
-        requestAnimationFrame(loop);
-      })();
-    });
-    if(cnt) noise = acc/cnt;
+    const n0 = await sampleFor(450, {});
+    if(n0.samples.length) noise = n0.samples.reduce((a,b)=>a+b,0)/n0.samples.length;
   }
   const thr = clamp(noise*2.2, 0.006, 0.030);
   waveThr = thr;
@@ -1244,11 +1180,11 @@ async function runAttempt(){
   const ct = $("#countTxt");
   ct.style.display="flex";
   for(let i=3;i>=1;i--){
-    if(abortFlag){ return; }
+    if(abortFlag){ ct.style.display="none"; return; }
     ct.textContent = i;
     await sleep(700);
   }
-  if(abortFlag) return;
+  if(abortFlag){ ct.style.display="none"; return; }
   ct.textContent = "こえ！";
   await sleep(450);
   ct.style.display="none";
@@ -1259,23 +1195,12 @@ async function runAttempt(){
   setPhase("rec","こえを 出して！");
   const word = curWord();
   const ref  = getRef(word);
-  const secs = clamp(Math.max(db.settings.recSec, Math.ceil(ref.sec*1.8+0.6)), 3, 12);
-  const dur  = secs*1000;
-  const t0 = performance.now();
-  const samples=[];
-  await new Promise(res=>{
-    (function loop(){
-      if(abortFlag) return res();
-      const el = performance.now()-t0;
-      if(el>=dur) return res();
-      const v = rms();
-      samples.push(v);
-      waveTrace.push(v);
-      if(waveTrace.length>140) waveTrace.shift();
-      drawWave(true);
-      requestAnimationFrame(loop);
-    })();
-  });
+  let secs = Math.max(db.settings.recSec||4, Math.ceil((ref.sec||0.5)*1.8+0.6));
+  if(!isFinite(secs)) secs = 4;
+  const dur = clamp(secs,3,12)*1000;
+
+  const got = await sampleFor(dur, {draw:true, stop:function(){ return abortFlag; }});
+
   running=false;
   holdWave=true;
   drawWave(false);
@@ -1285,10 +1210,59 @@ async function runAttempt(){
   $("#btnGo").textContent="はじめる";
   $("#btnGo").classList.remove("stop");
 
-  pending = analyze(samples, thr, performance.now()-t0, word);
+  pending = analyze(got.samples, thr, got.elapsed, word);
   showResult();
+
+  // まったく 音が とれていない ときは 原因を しらせる
+  const peak = got.samples.length ? Math.max.apply(null, got.samples) : 0;
+  if(analyser && peak < 0.004) warnNoSound();
+}
+function warnNoSound(){
+  const st = audioCtx ? audioCtx.state : "未作成";
+  modal('<div style="font-size:38px">🔇</div><h3>音を ひろえていません</h3>'
+    +'<p style="text-align:left">音声しょり：'+st+'<br>'
+    +(st!=="running"
+      ? "音声しょりが とまっています。画面を 1かい タップしてから もういちど おためしください。"
+      : "マイクは つながっていますが、音が 0 の ままです。<br>"
+        +"・端末本体の マイクが ミュートに なっていないか<br>"
+        +"・「せってい」→「マイクの かくにん」で さいだい音量を みる<br>"
+        +"・外づけマイクや ヘッドセットの せんたくを かくにん")
+    +'</p><button class="go" id="nsOk">とじる</button>');
+  const b=$("#nsOk"); if(b) b.addEventListener("click", closeModal);
 }
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+/* 一定時間 音量を サンプリングする。
+   requestAnimationFrame は 画面が かくれると 止まるため setInterval を つかい、
+   さらに 保険の タイマーで かならず 終わるようにする。 */
+function sampleFor(ms, opt){
+  opt = opt || {};
+  return new Promise(function(resolve){
+    const samples = [];
+    const t0 = performance.now();
+    let fin = false, iv = 0, wd = 0;
+    function finish(){
+      if(fin) return; fin = true;
+      clearInterval(iv); clearTimeout(wd);
+      resolve({samples:samples, elapsed:performance.now()-t0});
+    }
+    iv = setInterval(function(){
+      try{
+        if(opt.stop && opt.stop()) return finish();
+        const el = performance.now()-t0;
+        if(el >= ms) return finish();
+        const v = rms();
+        samples.push(v);
+        if(opt.draw){
+          waveTrace.push(v);
+          if(waveTrace.length>140) waveTrace.shift();
+          drawWave(true);
+        }
+      }catch(err){ console.error("[sample]", err); finish(); }
+    }, 20);
+    wd = setTimeout(finish, ms + 5000);   // ほけん
+  });
+}
 
 /* ---- 自動採点 ---- */
 function analyze(samples, thr, elapsedMs, word){
@@ -1991,6 +1965,7 @@ function renderDiag(note){
     + rows.map(r=>'<div><b style="color:#243450">'+r[0]+'</b>：'+r[1]+'</div>').join("");
 }
 $("#btnDiag").addEventListener("click", async ()=>{
+  ensureAudioCtx();
   await probeEnv();
   if(!analyser) await startMic();
   await probeEnv();
@@ -2041,6 +2016,15 @@ document.addEventListener("visibilitychange", ()=>{
   if(document.hidden && running){ abortAttempt(); }
 });
 window.addEventListener("pagehide", stopCam);
+
+/* 予期しない エラーを 画面にも 出す（端末での 切り分け用） */
+window.addEventListener("error", function(ev){
+  console.error("[uncaught]", ev.error || ev.message);
+  toast("エラー："+(ev.message||"ふめい"));
+});
+window.addEventListener("unhandledrejection", function(ev){
+  console.error("[rejected]", ev.reason);
+});
 
 if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
   $("#camOff").innerHTML = '<div style="font-size:40px">⚠️</div><div>この ブラウザでは カメラを つかえません。<br>https:// の アドレスで ひらいて ください。</div>';
