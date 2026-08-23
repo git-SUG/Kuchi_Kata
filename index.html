@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#17233A">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>くちのかたち れんしゅう</title>
@@ -604,6 +605,7 @@ let audioCtx=null, analyser=null, srcNode=null, dataArr=null, silentGain=null;
 let meterOn=false;        // ライブメーター稼働中
 let holdWave=false;       // 録音後、波形を消さずに残す
 let waveThr = 0.010;      // 発声とみなす音量のしきい値
+let lastMicErr = "";      // 直近のマイクエラー
 const LOUD_FULL = 0.06;   // この音量で「声の大きさ」満点
 let running = false;      // 録音中
 let pending = null;       // 採点まちの結果
@@ -682,19 +684,47 @@ function setMic(txt, ok){
   el.className = ok===true ? "ok" : (ok===false ? "ng" : "");
 }
 
+/* getUserMedia の エラーを 日本語で 説明する */
+function micErrText(e){
+  const n = e && e.name ? e.name : "Error";
+  const map = {
+    NotAllowedError:"きょかが おりていません（ブラウザ・OS・管理設定のいずれかでブロック）",
+    PermissionDeniedError:"きょかが おりていません",
+    NotFoundError:"マイクが 見つかりません（内蔵マイクが 無効の可能性）",
+    DevicesNotFoundError:"マイクが 見つかりません",
+    NotReadableError:"ほかの アプリが マイクを つかっています",
+    TrackStartError:"マイクを 開始できません",
+    OverconstrainedError:"この マイクでは つかえない せっていです",
+    SecurityError:"https でないため つかえません",
+    AbortError:"とちゅうで 中断されました"
+  };
+  return (map[n] || "げんいん ふめい") + "（" + n + "）";
+}
+
 async function startCam(){
-  stopVideo();
+  stopCam();
+  const vc = { facingMode: db.settings.facing, width:{ideal:1280}, height:{ideal:960} };
+  const ac = { echoCancellation:false, noiseSuppression:false, autoGainControl:false };
+  let gotAudio = false;
+
+  // ① まず 映像＋音声を まとめて 要求する（きょかダイアログが 1回で すむ）
   try{
-    stream = await navigator.mediaDevices.getUserMedia({
-      video:{ facingMode: db.settings.facing, width:{ideal:1280}, height:{ideal:960} },
-      audio:false
-    });
+    stream = await navigator.mediaDevices.getUserMedia({video:vc, audio:ac});
+    gotAudio = stream.getAudioTracks().length>0;
   }catch(e){
-    modal('<div style="font-size:38px">📷</div><h3>カメラを つかえません</h3>'
-      +'<p>ブラウザの きょかを かくにんしてください。<br>（Chromebook は かんりしゃの せっていで きんしされている ことが あります）</p>'
-      +'<button class="go" id="cmOk">とじる</button>');
-    const b=$("#cmOk"); if(b) b.addEventListener("click", closeModal);
-    return false;
+    console.warn("[mic] video+audio failed:", e.name, e.message);
+    lastMicErr = micErrText(e);
+    // ② 音声つきが だめなら 映像だけで 続行する
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({video:vc, audio:false});
+    }catch(e2){
+      console.warn("[cam] video only failed:", e2.name, e2.message);
+      modal('<div style="font-size:38px">📷</div><h3>カメラを つかえません</h3>'
+        +'<p>'+micErrText(e2)+'<br>ブラウザの きょかを かくにんしてください。<br>（Chromebook は かんりしゃの せっていで きんしされている ことが あります）</p>'
+        +'<button class="go" id="cmOk">とじる</button>');
+      const b=$("#cmOk"); if(b) b.addEventListener("click", closeModal);
+      return false;
+    }
   }
   const v = $("#vid");
   v.srcObject = stream;
@@ -705,56 +735,77 @@ async function startCam(){
   $("#btnFlip").style.display="block";
   $("#zoomRow").style.display="flex";
   applyVideoStyle();
-  await startMic();
+
+  if(gotAudio){ attachAnalyser(stream); }
+  else{ await startMic(); }   // ③ 音声だけ もういちど 単独で 要求する
   return true;
 }
 
-/* マイクは映像と別に取得する。
-   ・同時取得だと端末によって音声トラックが無音になることがある
-   ・映像だけ許可 / 音声だけ不許可 の状態を切り分けられる */
+/* 音声だけを 取り直す（映像は そのまま） */
 async function startMic(){
   stopMic();
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    setMic("マイク：つかえません", false); return false;
+    lastMicErr = "この ブラウザは マイクに 対応していません";
+    setMic("マイク：×", false); $("#btnMic").style.display="block"; return false;
   }
-  try{
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false }
-    });
-  }catch(e){
-    try{ micStream = await navigator.mediaDevices.getUserMedia({audio:true}); }
-    catch(e2){
-      setMic("マイク：きょか なし", false);
-      $("#btnMic").style.display="block";
-      toast("マイクが つかえません。てんすうは じこひょうかだけに なります");
-      return false;
+  if(!window.isSecureContext){
+    lastMicErr = "https で ひらいていません";
+    setMic("マイク：https でない", false); $("#btnMic").style.display="block"; return false;
+  }
+  // 映像側の ストリームに 音声が あれば それを つかう
+  if(stream && stream.getAudioTracks().length){ return attachAnalyser(stream); }
+
+  const tries = [
+    { echoCancellation:false, noiseSuppression:false, autoGainControl:false },
+    true
+  ];
+  for(let i=0;i<tries.length;i++){
+    try{
+      micStream = await navigator.mediaDevices.getUserMedia({audio:tries[i]});
+      lastMicErr = "";
+      return attachAnalyser(micStream);
+    }catch(e){
+      console.warn("[mic] audio try"+i+" failed:", e.name, e.message);
+      lastMicErr = micErrText(e);
     }
   }
+  setMic("マイク：つかえません", false);
+  $("#btnMic").style.display="block";
+  toast("マイクが つかえません（"+lastMicErr+"）");
+  return false;
+}
+
+/* 解析ノードを つくる */
+function attachAnalyser(src){
   try{
     const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC){ throw new Error("no AudioContext"); }
     if(!audioCtx || audioCtx.state==="closed") audioCtx = new AC();
-    if(audioCtx.state === "suspended"){ try{ await audioCtx.resume(); }catch(e){} }
+    if(audioCtx.state === "suspended"){ audioCtx.resume().catch(function(){}); }
     if(srcNode){ try{ srcNode.disconnect(); }catch(e){} }
-    srcNode  = audioCtx.createMediaStreamSource(micStream);
+    srcNode  = audioCtx.createMediaStreamSource(src);
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 1024;
     analyser.smoothingTimeConstant = 0.2;
     dataArr  = new Uint8Array(analyser.fftSize);
     srcNode.connect(analyser);
-    // Safari 対策：出力側につながっていないと解析が動かない端末があるため、
-    // 音量0のゲインを経由して destination に接続しておく（音は出ない）
+    // Safari 対策：出力側に つながっていないと 解析が 動かない 端末が あるため、
+    // 音量0の ゲインを 経由して destination に つないでおく（音は 出ない）
     if(!silentGain){
       silentGain = audioCtx.createGain();
       silentGain.gain.value = 0;
       silentGain.connect(audioCtx.destination);
     }
     try{ analyser.connect(silentGain); }catch(e){}
+    lastMicErr = "";
     setMic("マイク：OK", true);
     $("#btnMic").style.display="none";
     startMeter();
     return true;
   }catch(e){
+    console.warn("[mic] analyser failed:", e);
     analyser = null;
+    lastMicErr = "音の かいせきを 開始できません（"+(e.name||"Error")+"）";
     setMic("マイク：しっぱい", false);
     $("#btnMic").style.display="block";
     return false;
@@ -801,7 +852,17 @@ function startMeter(){
 $("#btnMic").addEventListener("click", async ()=>{
   setMic("マイク：せつぞくちゅう…");
   const ok = await startMic();
-  toast(ok ? "マイクに つながりました" : "マイクに つながりません（せっていを かくにん）");
+  if(ok){ toast("マイクに つながりました"); return; }
+  modal('<div style="font-size:38px">🎤</div><h3>マイクに つながりません</h3>'
+    +'<p>'+(lastMicErr||"げんいん ふめい")+'</p>'
+    +'<p style="text-align:left;font-size:.82rem">'
+    +'① アドレスバーの 鍵アイコン → マイクを「許可」<br>'
+    +'② Chrome の 設定 → プライバシーとセキュリティ → サイトの設定 → マイク<br>'
+    +'③ 端末本体の マイクが オフ／ミュートに なっていないか<br>'
+    +'④ 会議アプリなど 他の アプリを 終了する<br>'
+    +'⑤ それでも だめなら「せってい」→「マイクの かくにん」の 内容を 情報担当へ'
+    +'</p><button class="go" id="mcOk">とじる</button>');
+  const b=$("#mcOk"); if(b) b.addEventListener("click", closeModal);
 });
 $("#btnFlip").addEventListener("click", async ()=>{
   db.settings.facing = db.settings.facing==="user" ? "environment" : "user";
@@ -1437,23 +1498,42 @@ $("#btnClear").addEventListener("click", ()=>{
 });
 
 /* ---- マイク診断 ---- */
+let diagPerm = "―", diagDev = "―";
+async function probeEnv(){
+  try{
+    if(navigator.permissions && navigator.permissions.query){
+      const p = await navigator.permissions.query({name:"microphone"});
+      diagPerm = p.state==="granted" ? "許可" : (p.state==="denied" ? "ブロック ← ここが原因" : "たずねる（未設定）");
+    }else{ diagPerm = "この ブラウザでは しらべられません"; }
+  }catch(e){ diagPerm = "しらべられません"; }
+  try{
+    const ds = await navigator.mediaDevices.enumerateDevices();
+    const ins = ds.filter(d=>d.kind==="audioinput");
+    diagDev = ins.length ? (ins.length+"こ：" + ins.map(d=>d.label||"（名前は許可後に表示）").join(" / "))
+                         : "0こ ← マイクが 認識されていません";
+  }catch(e){ diagDev = "しらべられません"; }
+}
 function renderDiag(note){
-  const t = micStream ? micStream.getAudioTracks()[0] : null;
+  const t = micStream ? micStream.getAudioTracks()[0]
+          : (stream && stream.getAudioTracks().length ? stream.getAudioTracks()[0] : null);
   const rows = [
     ["アドレス", location.protocol + (window.isSecureContext ? "（https OK）" : "　← https でないと つかえません")],
-    ["マイクの ストリーム", micStream ? "あり" : "なし"],
-    ["マイクの なまえ", t ? (t.label || "（名前なし）") : "―"],
-    ["トラック", t ? ((t.enabled?"有効":"無効") + (t.muted?" / ミュート中":"") + " / " + t.readyState) : "―"],
+    ["マイクの きょか", diagPerm],
+    ["マイク デバイス", diagDev],
+    ["音声トラック", t ? ((t.enabled?"有効":"無効") + (t.muted?" / ミュート中":"") + " / " + t.readyState + " / " + (t.label||"名前なし")) : "なし"],
     ["AudioContext", audioCtx ? audioCtx.state : "未作成"],
     ["サンプルレート", audioCtx ? audioCtx.sampleRate+" Hz" : "―"],
-    ["アナライザ", analyser ? "つながっています" : "つながっていません"]
+    ["アナライザ", analyser ? "つながっています" : "つながっていません"],
+    ["さいごの エラー", lastMicErr || "なし"]
   ];
   $("#diag").innerHTML =
     (note ? '<div style="color:#1E9E7E;font-weight:700;margin-bottom:6px">'+note+'</div>' : '')
     + rows.map(r=>'<div><b style="color:#243450">'+r[0]+'</b>：'+r[1]+'</div>').join("");
 }
 $("#btnDiag").addEventListener("click", async ()=>{
+  await probeEnv();
   if(!analyser) await startMic();
+  await probeEnv();
   renderDiag("そくてい中… こえを 出して ください");
   let mx=0; const t0=performance.now();
   await new Promise(res=>{ (function l(){
@@ -1473,7 +1553,7 @@ function showPage(id){
   $$(".page").forEach(p=>p.classList.toggle("on", p.id===id));
   $$(".tabbar button").forEach(b=>b.classList.toggle("on", b.dataset.p===id));
   if(id==="pgRecords") renderRecords();
-  if(id==="pgSettings"){ renderLearners(); syncSettings(); renderDiag(); }
+  if(id==="pgSettings"){ renderLearners(); syncSettings(); renderDiag(); probeEnv().then(()=>renderDiag()); }
   window.scrollTo(0,0);
 }
 $$(".tabbar button").forEach(b=> b.addEventListener("click", ()=>showPage(b.dataset.p)) );
