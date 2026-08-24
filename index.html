@@ -197,6 +197,15 @@
   .tabbar .ic{display:block; font-size:1.35rem; line-height:1.1;}
 
   /* ---------- modal ---------- */
+  /* ---------- けっか レイヤー ---------- */
+  .rmask{position:fixed; inset:0; background:rgba(12,20,36,.7); display:none;
+         align-items:center; justify-content:center; z-index:55; padding:16px;
+         backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);}
+  .rmask.on{display:flex;}
+  .rmask .card{width:100%; max-width:400px; margin:0; max-height:88vh; overflow-y:auto;
+               -webkit-overflow-scrolling:touch; box-shadow:0 20px 50px rgba(0,0,0,.35);
+               animation:pop .3s cubic-bezier(.2,1.3,.4,1);}
+
   .mask{position:fixed; inset:0; background:rgba(12,20,36,.66); display:none; align-items:center; justify-content:center; z-index:60; padding:20px;}
   .mask.on{display:flex;}
   .modal{background:var(--card); border-radius:28px; padding:24px 20px; max-width:340px; width:100%; text-align:center;
@@ -219,15 +228,13 @@
     #pgPractice.on{
       display:grid;
       grid-template-columns: minmax(0,1.08fr) minmax(0,.92fr);
-      grid-template-rows: auto 1fr;
+      grid-template-rows: minmax(0,1fr);
       gap:0 22px;
       align-items:start;
     }
-    #pMain{grid-column:1; grid-row:1 / span 2; position:sticky; top:16px;}
+    #pMain{grid-column:1; grid-row:1;}
     #pTop {grid-column:2; grid-row:1;}
-    #pSide{grid-column:2; grid-row:2;}
     #pgPractice .chips{flex-wrap:wrap; overflow:visible;}
-    #resultCard{margin-top:0 !important;}
     .stage{aspect-ratio:4/3;}
     .kana{min-width:150px; height:150px; font-size:88px;}
     .wavewrap{bottom:38px; left:16px; right:16px;}
@@ -262,8 +269,7 @@
     body.practice #pMain{position:static; height:100%; min-height:0;
                          display:flex; flex-direction:column;}
     body.practice #pMain .stage{flex:1 1 auto; aspect-ratio:auto; height:auto; min-height:150px;}
-    body.practice #pTop{min-height:0;}
-    body.practice #pSide{min-height:0; overflow-y:auto; padding-right:4px;}
+    body.practice #pTop{min-height:0; height:100%; overflow-y:auto; padding-right:4px;}
     body.practice #pTop .card{margin-bottom:12px;}
   }
   @media (min-width: 1200px){
@@ -334,28 +340,9 @@
 
     <div style="height:12px"></div>
     <button class="go" id="btnGo">カメラを つける</button>
+    <button class="mini" id="btnResult" style="display:none; margin-top:8px; width:100%">けっかを もういちど 見る</button>
     </div><!-- /pMain -->
 
-    <div class="pcol" id="pSide">
-    <!-- result -->
-    <div class="card" id="resultCard" style="display:none; margin-top:14px;">
-      <h2>けっか</h2>
-      <div class="scorebig num"><span id="scoreNum">0</span><span class="scoreunit">てん</span></div>
-      <div class="bars" id="autoBars"></div>
-      <p class="sub" style="margin-top:14px">くちの かたちは どうだった？</p>
-      <div class="rate" id="rateRow">
-        <button data-v="3"><span class="mk">◎</span><span class="tx">ばっちり</span></button>
-        <button data-v="2"><span class="mk">○</span><span class="tx">できた</span></button>
-        <button data-v="1"><span class="mk">△</span><span class="tx">もうすこし</span></button>
-      </div>
-      <div style="height:10px"></div>
-      <div class="toggle" id="listenTg"><span class="bx">✓</span><span>だれかに きいて もらった</span></div>
-      <div style="height:14px"></div>
-      <button class="go" id="btnSave">きろくする</button>
-      <div style="height:8px"></div>
-      <button class="go ghost" id="btnRetry">もういちど やる</button>
-    </div>
-    </div><!-- /pSide -->
   </section>
 
   <!-- ============ RECORDS ============ -->
@@ -508,6 +495,26 @@
   <button class="on" data-p="pgPractice"><span class="ic">🗣️</span>れんしゅう</button>
   <button data-p="pgRecords"><span class="ic">📊</span>きろく</button>
   <button data-p="pgSettings"><span class="ic">⚙️</span>せってい</button>
+</div>
+
+<div class="rmask" id="resultMask">
+  <div class="card" id="resultCard">
+    <h2>けっか</h2>
+    <div class="scorebig num"><span id="scoreNum">0</span><span class="scoreunit">てん</span></div>
+    <div class="bars" id="autoBars"></div>
+    <p class="sub" style="margin-top:14px">くちの かたちは どうだった？</p>
+    <div class="rate" id="rateRow">
+      <button data-v="3"><span class="mk">◎</span><span class="tx">ばっちり</span></button>
+      <button data-v="2"><span class="mk">○</span><span class="tx">できた</span></button>
+      <button data-v="1"><span class="mk">△</span><span class="tx">もうすこし</span></button>
+    </div>
+    <div style="height:10px"></div>
+    <div class="toggle" id="listenTg"><span class="bx">✓</span><span>だれかに きいて もらった</span></div>
+    <div style="height:14px"></div>
+    <button class="go" id="btnSave">きろくする</button>
+    <div style="height:8px"></div>
+    <button class="go ghost" id="btnRetry">もういちど やる</button>
+  </div>
 </div>
 
 <div class="mask" id="mask"><div class="modal" id="modalBody"></div></div>
@@ -1343,9 +1350,16 @@ function setPhase(p, label){
   $("#stateP").textContent = label || p;
   $("#stateP").className = "pill" + (p==="rec" ? " rec" : "");
 }
+function openResultLayer(){
+  const m = $("#resultMask");
+  if(m) m.classList.add("on");
+  const b = $("#btnResult");
+  if(b) b.style.display = "block";
+  try{ $("#resultCard").scrollTop = 0; }catch(e){}
+}
 function hideResult(){
   holdWave = false;
-  $("#resultCard").style.display="none";
+  $("#resultMask").classList.remove("on");
   pending=null; selMouth=0; listened=false;
   $$("#rateRow button").forEach(b=>b.classList.remove("on"));
   $("#listenTg").classList.remove("on");
@@ -1369,12 +1383,15 @@ $("#btnGo").addEventListener("click", async ()=>{
     return;
   }
   if(phase==="ready"){ runAttempt(); return; }
-  if(phase==="count" || phase==="rec"){ abortAttempt(); return; }
+  if(phase==="count"){ abortAttempt(); return; }      // カウント中は とりやめ
+  if(phase==="rec"){ stopEarly = true; return; }      // 録音中は そこで おわりにして けっかへ
 });
 
 let abortFlag=false;
+let stopEarly=false;   // 録音を とちゅうで おわらせる（けっかは 出す）
 function abortAttempt(){
   abortFlag = true;
+  stopEarly = false;
   running=false;
   holdWave=false;
   setPhase("ready","じゅんび OK");
@@ -1412,7 +1429,7 @@ async function runAttemptInner(){
 
   // カウントダウン
   setPhase("count","よういは いい？");
-  $("#btnGo").textContent="やめる";
+  $("#btnGo").textContent="とりやめ";
   $("#btnGo").classList.add("stop");
   const ct = $("#countTxt");
   ct.style.display="flex";
@@ -1429,29 +1446,46 @@ async function runAttemptInner(){
 
   // ろくおん（課題が 長い ときは 録音時間を のばす）
   running=true;
+  stopEarly=false;
   setPhase("rec","こえを 出して！");
+  $("#btnGo").textContent="いえた！ けっかを 見る";
   const word = curWord();
   const ref  = getRef(word);
   let secs = Math.max(db.settings.recSec||4, Math.ceil((ref.sec||0.5)*1.8+0.6));
   if(!isFinite(secs)) secs = 4;
   const dur = clamp(secs,3,12)*1000;
 
-  const got = await sampleFor(dur, {draw:true, stop:function(){ return abortFlag; }});
+  const t1 = performance.now();
+  const got = await sampleFor(dur, {draw:true, stop:function(){
+    if(abortFlag) return true;
+    // 「おわり」を おした ときは 0.8びょう いじょう ろくおん していれば そこで しめる
+    return stopEarly && (performance.now()-t1 > 800);
+  }});
 
   running=false;
   holdWave=true;
   drawWave(false);
   if(abortFlag){ holdWave=false; return; }
 
-  setPhase("ready","じゅんび OK");
+  setPhase("ready","けっかを ひょうじ");
   $("#btnGo").textContent="はじめる";
   $("#btnGo").classList.remove("stop");
 
-  pending = analyze(got.samples, thr, got.elapsed, word);
-  showResult();
+  // 計算より さきに レイヤーを ひらく（とちゅうで こけても かならず 見える）
+  openResultLayer();
+  try{
+    pending = analyze(got.samples, thr, got.elapsed, word);
+    showResult();
+  }catch(err){
+    console.error("[result]", err);
+    $("#scoreNum").textContent = "―";
+    $("#autoBars").innerHTML = '<p class="sub">けっかの けいさんで エラーが おきました：'
+      + esc((err && err.message) ? err.message : String(err)) + '</p>';
+  }
 
   // まったく 音が とれていない ときは 原因を しらせる
-  const peak = got.samples.length ? Math.max.apply(null, got.samples) : 0;
+  let peak = 0;
+  for(let i=0;i<got.samples.length;i++){ if(got.samples[i]>peak) peak = got.samples[i]; }
   if(analyser && peak < 0.004) warnNoSound();
 }
 function warnNoSound(){
@@ -1616,8 +1650,7 @@ function showResult(){
     }
   }
   updatePreview();
-  $("#resultCard").style.display="block";
-  try{ const rc=$("#resultCard"); if(rc.scrollIntoView) rc.scrollIntoView({behavior:"smooth", block:"nearest"}); }catch(e){}
+  openResultLayer();
 }
 function updatePreview(){
   if(!pending) return;
@@ -1644,7 +1677,13 @@ $("#listenTg").addEventListener("click", ()=>{
   $("#listenTg").classList.toggle("on", listened);
   updatePreview();
 });
-$("#btnRetry").addEventListener("click", ()=>{ hideResult(); runAttempt(); });
+$("#btnRetry").addEventListener("click", ()=>{
+  hideResult(); $("#btnResult").style.display="none"; runAttempt();
+});
+$("#btnResult").addEventListener("click", ()=>{
+  if(!pending){ toast("まだ けっかが ありません"); return; }
+  openResultLayer();
+});
 
 $("#btnSave").addEventListener("click", ()=>{
   if(!pending){ return; }
@@ -1664,6 +1703,8 @@ $("#btnSave").addEventListener("click", ()=>{
   db.records.push(rec);
   save();
   hideResult();
+  $("#btnResult").style.display="none";
+  setPhase("ready","じゅんび OK");
   renderChips(); renderRecords();
   const after = totals();
   const got = checkMedals(after);
